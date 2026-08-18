@@ -1,0 +1,242 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-stone-100 text-stone-900 antialiased;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-accent-700 text-white hover:bg-accent-800 active:bg-accent-900;
+  }
+  .btn-secondary {
+    @apply btn bg-stone-200 text-stone-800 hover:bg-stone-300 active:bg-stone-400;
+  }
+  .btn-ghost {
+    @apply btn text-stone-600 hover:bg-stone-200 hover:text-stone-900;
+  }
+  .btn-danger {
+    @apply btn bg-red-700 text-white hover:bg-red-800 active:bg-red-900;
+  }
+  .input {
+    @apply w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 placeholder-stone-400 focus:border-accent-500 focus:outline-none focus:ring-1 focus:ring-accent-500;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-stone-500;
+  }
+  .card {
+    @apply rounded-lg border border-stone-200 bg-white;
+  }
+}
+
+/* Custom checkbox styling — minimal, professional */
+input[type='checkbox'].dk-check {
+  @apply h-4 w-4 cursor-pointer rounded border-stone-400 text-accent-700 focus:ring-accent-500;
+}
+
+/* ── Animations ──────────────────────────────────────────────────────────── */
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes progress-bar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes drop-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(213, 70, 41, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(213, 70, 41, 0.08); }
+  100% { box-shadow: 0 0 0 0 rgba(213, 70, 41, 0); }
+}
+
+.drop-pulse {
+  animation: drop-pulse 0.8s ease-out;
+}
+
+/* Utility classes */
+.animate-fade-in-up {
+  animation: fadeInUp 0.35s ease-out both;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out both;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out both;
+}
+
+.animate-spin-slow {
+  animation: spin 1s linear infinite;
+}
+
+/* Staggered children — set --stagger-i via inline style or nth-child */
+.stagger-children > * {
+  animation: fadeInUp 0.35s ease-out both;
+  animation-delay: calc(var(--stagger-i, 0) * 40ms);
+}
+
+/* Shimmer skeleton */
+.skeleton {
+  background: linear-gradient(90deg, #f0eeec 25%, #e7e5e4 50%, #f0eeec 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: 4px;
+}
+
+/* Progress shimmer bar (indeterminate) */
+.progress-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.progress-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: progress-bar 1.5s ease-in-out infinite;
+}
+
+/* View transition */
+.view-transition {
+  animation: fadeInUp 0.3s ease-out both;
+}
+
+/* Nav active indicator */
+.nav-active-indicator {
+  transition: all 0.2s ease;
+}
+
+/* Hover lift */
+.hover-lift {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+
+/* Scrollbar — subtle */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
+}
+
+/* ── Mobile simulation mode ─────────────────────────────────────────────── */
+
+.simulate-mobile {
+  max-width: 420px;
+  margin: 0 auto;
+  border-left: 1px solid #e7e5e4;
+  border-right: 1px solid #e7e5e4;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.06);
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+body:has(.simulate-mobile) {
+  background: #e7e5e4;
+}
+
+/* Force base .hidden to win over sm: display utilities */
+.simulate-mobile .hidden { display: none !important; }
+
+/* Show sm:hidden elements (bottom nav, mobile tab bar) */
+.simulate-mobile .sm\:hidden { display: flex !important; }
+
+/* Stack vertically instead of row */
+.simulate-mobile .sm\:flex-row { flex-direction: column !important; }
+
+/* Collapse grids to single column */
+.simulate-mobile .sm\:grid-cols-2 { grid-template-columns: 1fr !important; }
+.simulate-mobile .sm\:grid-cols-3 { grid-template-columns: 1fr !important; }
+.simulate-mobile .lg\:grid-cols-3 { grid-template-columns: 1fr !important; }
+
+/* Full width instead of fixed widths */
+.simulate-mobile .sm\:w-\[380px\] { width: 100% !important; }
+.simulate-mobile .sm\:w-40 { width: 100% !important; }
+.simulate-mobile .sm\:w-32 { width: auto !important; }
+.simulate-mobile .sm\:w-2\/5 { width: 100% !important; }
+
+/* Allow shrinking */
+.simulate-mobile .sm\:shrink-0 { flex-shrink: 1 !important; }
+
+/* Restore mobile positioning for MatterPicker overlay */
+.simulate-mobile .sm\:inset-auto { inset: 0 !important; }
+.simulate-mobile .sm\:items-start { align-items: flex-end !important; }
+.simulate-mobile .sm\:justify-start { justify-content: center !important; }
+
+/* Keep mobile padding and alignment */
+.simulate-mobile .sm\:px-3 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+.simulate-mobile .sm\:items-stretch { align-items: center !important; }
+
+/* Disable drag-and-drop in mobile mode — rely on tap-to-assign instead */
+.simulate-mobile [draggable="true"] {
+  -webkit-user-drag: none;
+  user-drag: none;
+  cursor: pointer !important;
+}
+.simulate-mobile .cursor-grab {
+  cursor: pointer !important;
+}
+.simulate-mobile [draggable="true"]::before {
+  display: none !important;
+}
