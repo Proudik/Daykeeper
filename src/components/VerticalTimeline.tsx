@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { ActivityItem, Provider } from '@/types';
 import { formatMinutes, minutesBetween, parseHHmm, timestampToMinutes } from '@/lib/time';
+import { todayLocal } from '@/lib/time';
 
 const PROVIDER_COLORS: Record<Provider, string> = {
   email: '#2563eb',
@@ -30,6 +31,7 @@ interface VerticalTimelineProps {
   workEnd: string;
   usedItemIds?: Set<string>;
   generatedItemIds?: Set<string>;
+  selectedDate?: string;
 }
 
 const HOUR_PX = 56;
@@ -71,6 +73,7 @@ export function VerticalTimeline({
   workEnd,
   usedItemIds,
   generatedItemIds,
+  selectedDate,
 }: VerticalTimelineProps) {
   const startMin = parseHHmm(workStart);
   const endMin = Math.max(parseHHmm(workEnd), startMin + 60);
@@ -88,6 +91,9 @@ export function VerticalTimeline({
 
   const hours = Array.from({ length: Math.floor((displayEnd - displayStart) / 60) + 1 }, (_, i) => displayStart / 60 + i);
 
+  const isToday = selectedDate === todayLocal();
+  const nowMin = isToday ? (new Date().getHours() * 60 + new Date().getMinutes()) : null;
+
   return (
     <div className="relative w-full select-none" style={{ height: totalPx }}>
       {hours.map((hour) => (
@@ -97,11 +103,22 @@ export function VerticalTimeline({
           </span>
         </div>
       ))}
+      {/* Red "now" line for today */}
+      {nowMin !== null && nowMin >= displayStart && nowMin <= displayEnd && (
+        <div
+          className="absolute left-0 right-0 z-20 flex items-center"
+          style={{ top: 28 + ((nowMin - displayStart) / 60) * HOUR_PX }}
+        >
+          <div className="h-0 w-full border-t-2 border-red-500" />
+          <span className="absolute -top-2.5 right-0 rounded bg-red-500 px-1 text-[8px] font-bold text-white">NOW</span>
+        </div>
+      )}
       {entries.map((entry) => {
         const used = usedItemIds?.has(entry.item.id) ?? false;
         const inTimesheet = generatedItemIds?.has(entry.item.id) ?? false;
         const color = PROVIDER_COLORS[entry.item.provider] ?? '#78716c';
-        const width = Math.max(36, 100 / entry.laneCount - 4);
+        const laneWidth = Math.max(36, Math.min(100 / entry.laneCount - 4, 95));
+        const width = laneWidth;
         const left = (entry.lane * 100) / entry.laneCount + 2;
         const overlapping = entry.laneCount > 1;
         const canShowTitle = (entry.item.provider === 'singlecase' && entry.item.meta.scActivityKind === 'document')
