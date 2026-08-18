@@ -7,7 +7,7 @@ import { createGoogleProvider, getGoogleLastError, clearGoogleLastError, type Go
 import { createCustomProvider, getCustomError, clearCustomError, type CustomProviderData } from '@/providers/custom';
 import { createBrowserProvider } from '@/providers/browser';
 import { createWebhookProvider } from '@/providers/webhook';
-import { subscribeToDaySignals, subscribeToWebhookSignals } from '@/lib/signals';
+import { subscribeToDaySignals, subscribeToWebhookSignals, subscribeToScDocumentSignals, insertScDocumentSignal } from '@/lib/signals';
 import type { SingleCaseTimeEntry } from '@/providers/singlecase/types';
 import type {
   ActivityItem,
@@ -53,6 +53,7 @@ import {
   ListChecks,
   FileText,
   Sparkles,
+  FileEdit,
 } from 'lucide-react';
 
 interface DayViewProps {
@@ -410,6 +411,15 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     return unsub;
   }, [selectedDate, webhookProvider, fetchActivity]);
 
+  // Subscribe to realtime SC document-editing signal upserts for the selected day.
+  useEffect(() => {
+    if (!scProviderData) return;
+    const unsub = subscribeToScDocumentSignals(selectedDate, () => {
+      fetchActivity(true);
+    });
+    return unsub;
+  }, [selectedDate, scProviderData, fetchActivity]);
+
   // Load which activity items have already been used in a saved timesheet for this date
   useEffect(() => {
     async function loadUsedItems() {
@@ -762,6 +772,58 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     setShowManualForm(false);
   }
 
+  async function handleSimulateDocEdit() {
+    const now = new Date();
+    const tz = profile?.timezone ?? 'Europe/Prague';
+    const localNow = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+    const hour = localNow.getHours();
+    const minute = localNow.getMinutes();
+
+    const startMin = Math.max(0, hour * 60 + minute - 45);
+    const durationMin = 15 + Math.floor(Math.random() * 30);
+    const endMin = startMin + durationMin;
+
+    const startHour = Math.floor(startMin / 60);
+    const startMinute = startMin % 60;
+    const endHour = Math.floor(endMin / 60);
+    const endMinute = endMin % 60;
+
+    const dayStr = selectedDate;
+    const startTime = `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`;
+    const endTime = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
+
+    const startIso = new Date(`${dayStr}T${startTime}:00`).toISOString();
+    const endIso = new Date(`${dayStr}T${endTime}:00`).toISOString();
+
+    const docNames = [
+      'Purchase_Agreement_v3.docx',
+      'NDA_TechCorp_final.docx',
+      'Litigation_Memo_case142.docx',
+      'Contract_Review_draft.docx',
+      'Motion_to_Dismiss.docx',
+      'Settlement_Draft.docx',
+    ];
+    const fileName = docNames[Math.floor(Math.random() * docNames.length)];
+    const wordCount = 200 + Math.floor(Math.random() * 1800);
+    const revisionCount = 1 + Math.floor(Math.random() * 4);
+
+    const matter = matters.length > 0 ? matters[Math.floor(Math.random() * matters.length)] : null;
+
+    await insertScDocumentSignal({
+      day: dayStr,
+      timestamp: startIso,
+      end_timestamp: endIso,
+      duration_minutes: durationMin,
+      file_name: fileName,
+      case_id: matter?.external_id ?? null,
+      case_name: matter?.name ?? null,
+      case_id_visible: matter?.case_id_visible ?? null,
+      word_count: wordCount,
+      revision_count: revisionCount,
+      summary: `Editing ${fileName}${matter ? ` · ${matter.case_id_visible ?? matter.name}` : ''}`,
+    });
+  }
+
   function handlePreviewDrop(itemId: string, matterId: string) {
     setSelectedIds((prev) => new Set(prev).add(itemId));
     setGenerationRevision((revision) => revision + 1);
@@ -877,6 +939,14 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleSimulateDocEdit}
+              title="Simulate SingleCase document editing"
+              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-50"
+            >
+              <FileEdit size={14} />
+              <span className="hidden lg:inline">Simulate doc edit</span>
+            </button>
             <button
               onClick={() => fetchActivity()}
               disabled={loading}

@@ -63,3 +63,21 @@ export type WebhookSignal = {
   external_id: string | null;
   created_at: string;
 };
+
+export type ScDocumentSignal = {
+  id: string;
+  user_id: string;
+  day: string;
+  timestamp: string;
+  end_timestamp: string | null;
+  duration_minutes: number;
+  file_name: string;
+  case_id: string | null;
+  case_name: string | null;
+  case_id_visible: string | null;
+  word_count: number;
+  revision_count: number;
+  summary: string | null;
+  meta: Record<string, unknown> | null;
+  created_at: string;
+};

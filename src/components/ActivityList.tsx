@@ -438,6 +438,15 @@ function renderSubline(item: ActivityItem): string {
       return `${m.revisionCount} revision${(m.revisionCount ?? 0) === 1 ? '' : 's'}`;
     case 'custom':
       return [m.sender, m.subject, m.channel, m.fileName, m.title].filter(Boolean).join(' · ') || 'Custom connector';
+    case 'singlecase':
+      if (m.scActivityKind === 'document') {
+        return [
+          m.caseIdVisible ?? m.caseName,
+          m.wordCount ? `${m.wordCount} words` : '',
+          `${m.revisionCount} revision${(m.revisionCount ?? 0) === 1 ? '' : 's'}`,
+        ].filter(Boolean).join(' · ');
+      }
+      return m.caseIdVisible ?? m.caseName ?? '';
     default:
       return '';
   }

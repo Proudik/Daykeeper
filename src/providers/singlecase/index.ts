@@ -17,6 +17,8 @@ import {
   type EmailMatterMatch,
 } from './lookups';
 import { supabase } from '@/lib/supabase';
+import { fetchScDocumentSignals } from '@/lib/signals';
+import type { ScDocumentSignal } from '@/types/signals';
 
 // ============================================================================
 // SINGLECASE PROVIDER — loads org-scoped reference data from Supabase
@@ -110,8 +112,10 @@ export async function createSingleCaseProvider(): Promise<SingleCaseProviderData
   const provider: ActivityProvider = {
     provider: 'singlecase' as Provider,
     label: 'SingleCase',
-    async fetchActivity(): Promise<ActivityItem[]> {
-      return [];
+    async fetchActivity(dateRange: DateRange): Promise<ActivityItem[]> {
+      const day = dateRange.start.slice(0, 10);
+      const signals = await fetchScDocumentSignals(day);
+      return signals.map((s) => scDocSignalToActivityItem(s));
     },
   };
 
@@ -135,8 +139,10 @@ function emptyProviderData(): SingleCaseProviderData {
     provider: {
       provider: 'singlecase' as Provider,
       label: 'SingleCase',
-      async fetchActivity(): Promise<ActivityItem[]> {
-        return [];
+      async fetchActivity(dateRange: DateRange): Promise<ActivityItem[]> {
+        const day = dateRange.start.slice(0, 10);
+        const signals = await fetchScDocumentSignals(day);
+        return signals.map((s) => scDocSignalToActivityItem(s));
       },
     },
     existingTimeEntries: [],
@@ -147,6 +153,28 @@ function emptyProviderData(): SingleCaseProviderData {
     activityTypes: [],
     contacts: [],
     matterContacts: [],
+  };
+}
+
+function scDocSignalToActivityItem(s: ScDocumentSignal): ActivityItem {
+  const meta: ActivityMeta = {
+    caseId: s.case_id ?? undefined,
+    caseName: s.case_name ?? undefined,
+    caseIdVisible: s.case_id_visible ?? undefined,
+    scActivityKind: 'document',
+    fileName: s.file_name,
+    revisionCount: s.revision_count,
+    wordCount: s.word_count,
+  };
+
+  return {
+    id: `scdoc-${s.id}`,
+    provider: 'singlecase',
+    timestamp: s.timestamp,
+    endTimestamp: s.end_timestamp ?? undefined,
+    durationMinutes: s.duration_minutes,
+    summary: s.summary ?? `Editing ${s.file_name}`,
+    meta,
   };
 }
 

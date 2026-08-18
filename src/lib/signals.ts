@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import type { BrowserSignal, PairedDevice, WebhookEndpoint, WebhookSignal } from '@/types/signals';
+import type { BrowserSignal, PairedDevice, WebhookEndpoint, WebhookSignal, ScDocumentSignal } from '@/types/signals';
 
 const SIGNALS_SELECT =
   'id, device_id, day, bucket_start, domain, duration_s, session_count, ' +
@@ -146,4 +146,71 @@ export function subscribeToWebhookSignals(
   return () => {
     supabase.removeChannel(channel);
   };
+}
+
+// ─── SingleCase document-editing signals ─────────────────────────────────────
+
+const SC_DOC_SIGNALS_SELECT =
+  'id, user_id, day, timestamp, end_timestamp, duration_minutes, file_name, ' +
+  'case_id, case_name, case_id_visible, word_count, revision_count, summary, meta, created_at';
+
+export async function fetchScDocumentSignals(day: string): Promise<ScDocumentSignal[]> {
+  const { data, error } = await supabase
+    .from('sc_document_signals')
+    .select(SC_DOC_SIGNALS_SELECT)
+    .eq('day', day)
+    .order('timestamp', { ascending: true });
+  if (error) return [];
+  return (data as ScDocumentSignal[]) ?? [];
+}
+
+export function subscribeToScDocumentSignals(
+  day: string,
+  onUpsert: (row: ScDocumentSignal) => void,
+): () => void {
+  const channel = supabase
+    .channel(`sc-doc-signals-${day}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'sc_document_signals', filter: `day=eq.${day}` },
+      (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          onUpsert(payload.new as ScDocumentSignal);
+        }
+      },
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+export async function insertScDocumentSignal(signal: {
+  day: string;
+  timestamp: string;
+  end_timestamp: string | null;
+  duration_minutes: number;
+  file_name: string;
+  case_id: string | null;
+  case_name: string | null;
+  case_id_visible: string | null;
+  word_count: number;
+  revision_count: number;
+  summary: string | null;
+}): Promise<boolean> {
+  const { error } = await supabase.from('sc_document_signals').insert({
+    day: signal.day,
+    timestamp: signal.timestamp,
+    end_timestamp: signal.end_timestamp,
+    duration_minutes: signal.duration_minutes,
+    file_name: signal.file_name,
+    case_id: signal.case_id,
+    case_name: signal.case_name,
+    case_id_visible: signal.case_id_visible,
+    word_count: signal.word_count,
+    revision_count: signal.revision_count,
+    summary: signal.summary,
+  });
+  return !error;
 }
