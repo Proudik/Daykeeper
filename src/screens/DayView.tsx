@@ -809,7 +809,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
 
     const matter = matters.length > 0 ? matters[Math.floor(Math.random() * matters.length)] : null;
 
-    await insertScDocumentSignal({
+    const result = await insertScDocumentSignal({
       day: dayStr,
       timestamp: startIso,
       end_timestamp: endIso,
@@ -822,6 +822,16 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
       revision_count: revisionCount,
       summary: `Editing ${fileName}${matter ? ` · ${matter.case_id_visible ?? matter.name}` : ''}`,
     });
+
+    if (!result.ok) {
+      setProviderError(
+        result.error
+          ? `Could not save document signal: ${result.error}`
+          : 'The document signal could not be saved. Please refresh and try again.',
+      );
+      return;
+    }
+    await fetchActivity(true);
   }
 
   function handlePreviewDrop(itemId: string, matterId: string) {
@@ -984,6 +994,20 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
       <div className="flex flex-1 flex-col overflow-hidden sm:flex-row">
         {/* Left pane — activity sessions */}
         <div className={`flex-1 overflow-auto px-4 py-4 ${mobileTab === 'signals' ? 'block' : 'hidden'} sm:block`}>
+          {/* Transient error banner (visible even when items exist) */}
+          {providerError && items.length > 0 && (
+            <div className="mb-3 flex items-center gap-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
+              <AlertCircle size={14} className="shrink-0" />
+              <span className="flex-1">{providerError}</span>
+              <button
+                onClick={() => setProviderError(null)}
+                className="text-red-400 hover:text-red-600"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {/* Manual entries */}
           {manualEntries.length > 0 && (
             <div className="mb-4 space-y-1.5">

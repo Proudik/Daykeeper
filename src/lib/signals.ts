@@ -198,7 +198,7 @@ export async function insertScDocumentSignal(signal: {
   word_count: number;
   revision_count: number;
   summary: string | null;
-}): Promise<boolean> {
+}): Promise<{ ok: boolean; error: string | null }> {
   const { error } = await supabase.from('sc_document_signals').insert({
     day: signal.day,
     timestamp: signal.timestamp,
@@ -212,5 +212,5 @@ export async function insertScDocumentSignal(signal: {
     revision_count: signal.revision_count,
     summary: signal.summary,
   });
-  return !error;
+  return { ok: !error, error: error ? error.message : null };
 }

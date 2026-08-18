@@ -104,7 +104,9 @@ export function VerticalTimeline({
         const width = Math.max(36, 100 / entry.laneCount - 4);
         const left = (entry.lane * 100) / entry.laneCount + 2;
         const overlapping = entry.laneCount > 1;
-        const canShowTitle = entry.heightPx >= 22 && width > 52;
+        const canShowTitle = (entry.item.provider === 'singlecase' && entry.item.meta.scActivityKind === 'document')
+          ? entry.heightPx >= 16 && width > 40
+          : entry.heightPx >= 22 && width > 52;
         return (
           <div
             key={entry.item.id}
