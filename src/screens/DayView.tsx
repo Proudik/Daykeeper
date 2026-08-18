@@ -7,7 +7,7 @@ import { createGoogleProvider, getGoogleLastError, clearGoogleLastError, type Go
 import { createCustomProvider, getCustomError, clearCustomError, type CustomProviderData } from '@/providers/custom';
 import { createBrowserProvider } from '@/providers/browser';
 import { createWebhookProvider } from '@/providers/webhook';
-import { subscribeToDaySignals, subscribeToWebhookSignals, subscribeToScDocumentSignals, insertScDocumentSignal } from '@/lib/signals';
+import { subscribeToDaySignals, subscribeToWebhookSignals, subscribeToScDocumentSignals, insertScDocumentSignal, deleteScDocumentSignal } from '@/lib/signals';
 import type { SingleCaseTimeEntry } from '@/providers/singlecase/types';
 import type {
   ActivityItem,
@@ -834,6 +834,23 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     await fetchActivity(true);
   }
 
+  async function handleDeleteItem(itemId: string) {
+    if (itemId.startsWith('scdoc-')) {
+      const signalId = itemId.replace('scdoc-', '');
+      const ok = await deleteScDocumentSignal(signalId);
+      if (!ok) {
+        setProviderError('Could not delete signal. Please try again.');
+        return;
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(itemId);
+        return next;
+      });
+      await fetchActivity(true);
+    }
+  }
+
   function handlePreviewDrop(itemId: string, matterId: string) {
     setSelectedIds((prev) => new Set(prev).add(itemId));
     setGenerationRevision((revision) => revision + 1);
@@ -1254,6 +1271,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                   generatedItemIds={generatedItemIds}
                   timezone={profile?.timezone}
                   onDragStart={() => undefined}
+                  onDeleteItem={handleDeleteItem}
                 />
               </div>
             </div>

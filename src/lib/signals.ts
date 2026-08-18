@@ -186,6 +186,11 @@ export function subscribeToScDocumentSignals(
   };
 }
 
+export async function deleteScDocumentSignal(id: string): Promise<boolean> {
+  const { error } = await supabase.from('sc_document_signals').delete().eq('id', id);
+  return !error;
+}
+
 export async function insertScDocumentSignal(signal: {
   day: string;
   timestamp: string;

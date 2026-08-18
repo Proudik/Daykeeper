@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ActivityItem, Provider } from '@/types';
 import { formatTime, formatTimeRange, minutesBetween, formatMinutes } from '@/lib/time';
 import { providerColors } from '@/components/TimelineStrip';
-import { ChevronDown, ChevronRight, Mail, Calendar, MessageSquare, CheckSquare, FileText, Inbox, X, CheckCircle2, ArrowDownLeft, ArrowUpRight, Globe, Clock, Zap } from 'lucide-react';
+import { ChevronDown, ChevronRight, Mail, Calendar, MessageSquare, CheckSquare, FileText, Inbox, X, CheckCircle2, ArrowDownLeft, ArrowUpRight, Globe, Clock, Zap, Trash2 } from 'lucide-react';
 
 const BRIEF_THRESHOLD_MIN = 10;
 
@@ -27,6 +27,7 @@ interface ActivityListProps {
   generatedItemIds?: Set<string>;
   timezone?: string;
   onDragStart?: (itemId: string) => void;
+  onDeleteItem?: (itemId: string) => void;
 }
 
 const providerIcons: Record<Provider, typeof Mail> = {
@@ -65,6 +66,7 @@ export function ActivityList({
   generatedItemIds,
   timezone,
   onDragStart,
+  onDeleteItem,
 }: ActivityListProps) {
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [showUsed, setShowUsed] = useState(true);
@@ -285,6 +287,18 @@ export function ActivityList({
                           </span>
                         ) : null}
                       </div>
+                      {onDeleteItem && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteItem(item.id);
+                          }}
+                          className="shrink-0 p-1 text-stone-300 transition-colors hover:text-red-500"
+                          title="Remove signal"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
