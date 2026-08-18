@@ -107,8 +107,6 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const { profile } = useAuth();
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [matters, setMatters] = useState<Matter[]>([]);
-  const mattersRef = useRef<Matter[]>([]);
-  useEffect(() => { mattersRef.current = matters; }, [matters]);
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
   const [scProviderData, setScProviderData] = useState<SingleCaseProviderData | null>(null);
   const [ms365ProviderData, setMs365ProviderData] = useState<Ms365ProviderData | null>(null);
@@ -336,35 +334,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
       const results = await Promise.all(
         providers.map((p) => p.fetchActivity({ start, end }).catch(() => [] as ActivityItem[])),
       );
-
-      // Also load manual entries as activity items so they appear in the timeline
-      const { data: manualRows } = await supabase
-        .from('manual_entries')
-        .select('*')
-        .eq('user_id', profile?.user_id ?? '')
-        .eq('work_date', selectedDate);
-      const manualItems: ActivityItem[] = (manualRows as ManualEntry[] | null)?.map((entry) => {
-        const ts = entry.start_time
-          ? new Date(`${selectedDate}T${entry.start_time}:00`).toISOString()
-          : new Date(`${selectedDate}T09:00:00`).toISOString();
-        const endTs = new Date(new Date(ts).getTime() + entry.duration_minutes * 60_000).toISOString();
-        const matter = mattersRef.current.find((m) => m.id === entry.matter_id);
-        return {
-          id: `manual-${entry.id}`,
-          provider: 'custom' as Provider,
-          timestamp: ts,
-          endTimestamp: endTs,
-          durationMinutes: entry.duration_minutes,
-          summary: entry.description,
-          meta: {
-            title: entry.description,
-            caseIdVisible: matter?.case_id_visible,
-            caseName: matter?.name,
-          },
-        } satisfies ActivityItem;
-      }) ?? [];
-
-      const all = [...results.flat(), ...manualItems].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      const all = results.flat().sort((a, b) => b.timestamp.localeCompare(a.timestamp));
       setItems(all);
 
       if (silent) {
@@ -1283,7 +1253,6 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                   workEnd={workEnd}
                   usedItemIds={usedItemIds}
                   generatedItemIds={generatedItemIds}
-                  selectedDate={selectedDate}
                 />
                 </div>
               </div>
