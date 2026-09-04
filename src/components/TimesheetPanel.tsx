@@ -349,6 +349,7 @@ export function TimesheetPanel({
         {/* Compact drop zone when entries already exist */}
         {!generating && generationErrors.length === 0 && !expandedEntry && entries.length > 0 && onDropToEmpty && (
           <div
+            className="mt-1"
             onDragOver={(event) => {
               event.preventDefault();
               event.dataTransfer.dropEffect = 'move';
