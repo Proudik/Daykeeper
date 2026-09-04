@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback } from 'react';
+import { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import type { ActivityItem, Matter, Provider } from '@/types';
 import {
   timestampToMinutes,
@@ -17,15 +17,10 @@ import {
   Layers,
   Briefcase,
   Plus,
-  ArrowUpRight,
-  ArrowDownLeft,
-  Clock,
   CheckCircle2,
 } from 'lucide-react';
 
 // ── Column definitions ────────────────────────────────────────────────────
-// Each column is a "lane" in the calendar. Items are placed by start time
-// and stacked into lanes when they overlap.
 
 export type ColumnKey =
   | 'calendar'
@@ -51,7 +46,14 @@ const COLUMNS: ColumnDef[] = [
   { key: 'other', label: 'Other', icon: Layers, color: '#78716c' },
 ];
 
-// ── Item → column mapping ──────────────────────────────────────────────────
+const COL_INDEX: Record<ColumnKey, number> = {
+  calendar: 0,
+  email_sent: 1,
+  sc_doc: 2,
+  sc_other: 3,
+  browser: 4,
+  other: 5,
+};
 
 function itemColumn(item: ActivityItem): ColumnKey {
   if (item.provider === 'calendar') return 'calendar';
@@ -67,9 +69,6 @@ function itemColumn(item: ActivityItem): ColumnKey {
 }
 
 // ── Aggregation for SC Other and Browser ───────────────────────────────────
-// Individual SC-other actions (notes, tasks, proceedings) and browser buckets
-// are too granular to show one-by-one. We aggregate by case (SC Other) or by
-// 2-hour blocks (Browser) into summary blocks.
 
 interface AggregatedGroup {
   key: string;
@@ -123,7 +122,6 @@ function aggregateScOther(items: ActivityItem[], timezone?: string): AggregatedG
 }
 
 function aggregateBrowser(items: ActivityItem[], timezone?: string): AggregatedGroup[] {
-  // Group browser signals into 2-hour blocks
   const BLOCK_SIZE = 120;
   const byBlock = new Map<number, ActivityItem[]>();
   for (const item of items) {
@@ -177,6 +175,7 @@ interface PlacedBlock {
   isUsed?: boolean;
   isInTimesheet?: boolean;
   originalItem?: ActivityItem;
+  column: ColumnKey;
 }
 
 function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]): { lane: number; laneCount: number }[] {
@@ -191,6 +190,24 @@ function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]
   }
   const laneCount = Math.max(laneEnds.length, 1);
   return result.map((r) => ({ ...r, laneCount }));
+}
+
+// ── Connection detection ───────────────────────────────────────────────────
+// Two blocks are "connected" if their time ranges overlap (even partially)
+// and they are in different columns. This lets the user see which signals
+// happened at the same time across different sources.
+
+interface Connection {
+  fromKey: string;
+  toKey: string;
+  fromCol: number;
+  toCol: number;
+  y1: number;
+  y2: number;
+}
+
+function overlaps(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+  return aStart < bEnd && bStart < aEnd;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -210,9 +227,11 @@ interface CalendarBoardProps {
   onHoverEntry: (itemIds: string[] | null) => void;
 }
 
-const HOUR_PX = 56;
 const MIN_BLOCK_PX = 24;
 const MIN_DURATION_MIN = 15;
+const MIN_HOUR_PX = 28;
+const MAX_HOUR_PX = 240;
+const DEFAULT_HOUR_PX = 56;
 
 export function CalendarBoard({
   items,
@@ -224,20 +243,47 @@ export function CalendarBoard({
   generatedItemIds,
   highlightedItemIds,
   recentMatterIds,
-  onAssign,
+  onAssign: _onAssign,
   onDropGroup,
   onHoverEntry,
 }: CalendarBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverMatter, setDragOverMatter] = useState<string | null>(null);
   const [hoveredBlock, setHoveredBlock] = useState<string | null>(null);
+  const [hourPx, setHourPx] = useState(DEFAULT_HOUR_PX);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [boardWidth, setBoardWidth] = useState(600);
+
+  // Cmd/Ctrl + scroll to zoom the calendar time scale
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (!e.metaKey && !e.ctrlKey) return;
+    e.preventDefault();
+    setHourPx((prev) => {
+      const next = Math.round(prev + (e.deltaY < 0 ? 8 : -8));
+      return Math.max(MIN_HOUR_PX, Math.min(MAX_HOUR_PX, next));
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!boardRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setBoardWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(boardRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   const startMin = parseHHmm(workStart);
   const endMin = Math.max(parseHHmm(workEnd), startMin + 60);
   const displayStart = Math.floor(startMin / 60) * 60;
   const displayEnd = Math.ceil(endMin / 60) * 60;
-  const totalPx = ((displayEnd - displayStart) / 60) * HOUR_PX + 8;
+  const totalPx = ((displayEnd - displayStart) / 60) * hourPx + 8;
+
+  // Time gutter width
+  const GUTTER_W = 48;
 
   // Build column data
   const columns = useMemo(() => {
@@ -269,6 +315,7 @@ export function CalendarBoard({
           isAggregate: true,
           caseId: g.caseId,
           caseName: g.caseName,
+          column: colDef.key,
           isUsed: g.itemIds.every((id) => usedItemIds.has(id)),
           isInTimesheet: g.itemIds.some((id) => generatedItemIds.has(id)),
         }));
@@ -289,20 +336,19 @@ export function CalendarBoard({
           color: colDef.color,
           itemIds: g.itemIds,
           isAggregate: true,
+          column: colDef.key,
           isUsed: g.itemIds.every((id) => usedItemIds.has(id)),
           isInTimesheet: g.itemIds.some((id) => generatedItemIds.has(id)),
         }));
         continue;
       }
 
-      // Non-aggregated columns: each item is its own block
       const blockItems = colItems.map((item) => {
         const sMin = timestampToMinutes(item.timestamp, timezone);
         const eMin = item.endTimestamp
           ? timestampToMinutes(item.endTimestamp, timezone)
           : sMin + (item.durationMinutes ?? 15);
         const duration = eMin - sMin;
-        // Enforce minimum 15-minute visual height (like Google Calendar)
         const visualEnd = duration < MIN_DURATION_MIN ? sMin + MIN_DURATION_MIN : eMin;
         return { item, startMin: sMin, endMin: visualEnd, key: item.id };
       });
@@ -322,6 +368,7 @@ export function CalendarBoard({
         itemIds: [b.item.id],
         isAggregate: false,
         originalItem: b.item,
+        column: colDef.key,
         isUsed: usedItemIds.has(b.item.id),
         isInTimesheet: generatedItemIds.has(b.item.id),
       }));
@@ -329,6 +376,67 @@ export function CalendarBoard({
 
     return result;
   }, [items, timezone, usedItemIds, generatedItemIds]);
+
+  // All blocks flat for connection computation
+  const allBlocks = useMemo(() => {
+    return COLUMNS.flatMap((c) => columns[c.key]);
+  }, [columns]);
+
+  // Compute connections between blocks that overlap in time across different columns
+  const connections = useMemo<Connection[]>(() => {
+    const conns: Connection[] = [];
+    for (let i = 0; i < allBlocks.length; i++) {
+      for (let j = i + 1; j < allBlocks.length; j++) {
+        const a = allBlocks[i];
+        const b = allBlocks[j];
+        if (a.column === b.column) continue;
+        if (!overlaps(a.startMin, a.endMin, b.startMin, b.endMin)) continue;
+        const aCol = COL_INDEX[a.column];
+        const bCol = COL_INDEX[b.column];
+        const [from, to] = aCol < bCol ? [a, b] : [b, a];
+        const fromCol = aCol < bCol ? aCol : bCol;
+        const toCol = aCol < bCol ? bCol : aCol;
+        // Only connect adjacent columns to avoid visual clutter
+        if (toCol - fromCol > 1) continue;
+        const y1 = ((from.startMin + from.endMin) / 2 - displayStart) / 60 * hourPx;
+        const y2 = ((to.startMin + to.endMin) / 2 - displayStart) / 60 * hourPx;
+        conns.push({
+          fromKey: from.key,
+          toKey: to.key,
+          fromCol,
+          toCol,
+          y1,
+          y2,
+        });
+      }
+    }
+    return conns;
+  }, [allBlocks, displayStart, hourPx]);
+
+  // Build a map of block key → connected block keys (for group dragging)
+  const connectionMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const conn of connections) {
+      if (!map.has(conn.fromKey)) map.set(conn.fromKey, new Set());
+      if (!map.has(conn.toKey)) map.set(conn.toKey, new Set());
+      map.get(conn.fromKey)!.add(conn.toKey);
+      map.get(conn.toKey)!.add(conn.fromKey);
+    }
+    return map;
+  }, [connections]);
+
+  // Get all item IDs to drag when dragging a block (the block itself + all connected blocks)
+  const getDragGroupIds = useCallback((block: PlacedBlock): string[] => {
+    const connected = connectionMap.get(block.key);
+    if (!connected || connected.size === 0) return block.itemIds;
+    const allKeys = new Set<string>([block.key, ...connected]);
+    const allIds = new Set<string>();
+    for (const key of allKeys) {
+      const blk = allBlocks.find((b) => b.key === key);
+      if (blk) blk.itemIds.forEach((id) => allIds.add(id));
+    }
+    return Array.from(allIds);
+  }, [connectionMap, allBlocks]);
 
   // Hour markers
   const hours = useMemo(() => {
@@ -344,7 +452,6 @@ export function CalendarBoard({
     const recent = recentMatterIds
       .map((id) => matters.find((m) => m.id === id))
       .filter((m): m is Matter => Boolean(m));
-    // Also include any matter with recent activity if we don't have enough recents
     if (recent.length < 5) {
       const extra = matters
         .filter((m) => !recent.find((r) => r.id === m.id))
@@ -356,12 +463,13 @@ export function CalendarBoard({
 
   // Drag handlers
   const handleDragStart = useCallback((e: React.DragEvent, block: PlacedBlock) => {
-    const payload = JSON.stringify(block.itemIds);
+    const groupIds = getDragGroupIds(block);
+    const payload = JSON.stringify(groupIds);
     e.dataTransfer.setData('text/daykeeper-items', payload);
     e.dataTransfer.setData('text/daykeeper-item', block.itemIds[0]);
     e.dataTransfer.effectAllowed = 'move';
     setDraggingId(block.key);
-  }, []);
+  }, [getDragGroupIds]);
 
   const handleDragEnd = useCallback(() => {
     setDraggingId(null);
@@ -384,12 +492,23 @@ export function CalendarBoard({
     setDragOverMatter(null);
   }, [onDropGroup]);
 
+  // Compute which block keys are connected to the hovered block (for highlighting connections)
+  const hoveredConnections = useMemo(() => {
+    if (!hoveredBlock) return new Set<string>();
+    const connected = connectionMap.get(hoveredBlock);
+    if (!connected) return new Set<string>();
+    return new Set([hoveredBlock, ...connected]);
+  }, [hoveredBlock, connectionMap]);
+
   // Render a single block
   function renderBlock(block: PlacedBlock) {
-    const topPx = ((block.startMin - displayStart) / 60) * HOUR_PX;
-    const heightPx = Math.max(MIN_BLOCK_PX, ((block.endMin - block.startMin) / 60) * HOUR_PX);
-    const isHighlighted = highlightedItemIds.size > 0 && block.itemIds.some((id) => highlightedItemIds.has(id));
-    const isDimmed = highlightedItemIds.size > 0 && !isHighlighted;
+    const topPx = ((block.startMin - displayStart) / 60) * hourPx;
+    const heightPx = Math.max(MIN_BLOCK_PX, ((block.endMin - block.startMin) / 60) * hourPx);
+    // Highlight from timesheet preview hover
+    const isPreviewHighlighted = highlightedItemIds.size > 0 && block.itemIds.some((id) => highlightedItemIds.has(id));
+    const isPreviewDimmed = highlightedItemIds.size > 0 && !isPreviewHighlighted;
+    // Highlight from calendar hover (connection lines)
+    const isConnected = hoveredConnections.size > 0 && hoveredConnections.has(block.key);
     const isHovered = hoveredBlock === block.key;
     const width = Math.max(60, 100 / block.laneCount - 3);
     const left = (block.lane * 100) / block.laneCount + 1.5;
@@ -402,17 +521,15 @@ export function CalendarBoard({
         onDragEnd={handleDragEnd}
         onMouseEnter={() => {
           setHoveredBlock(block.key);
-          onHoverEntry(block.itemIds);
         }}
         onMouseLeave={() => {
           setHoveredBlock(null);
-          onHoverEntry(null);
         }}
         className={`group absolute cursor-grab overflow-hidden rounded-md border text-left transition-all duration-150 ${
-          isDimmed ? 'opacity-20' : ''
-        } ${isHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
-          draggingId === block.key ? 'opacity-40' : ''
-        } ${isHovered ? 'shadow-md z-10' : ''}`}
+          isPreviewDimmed ? 'opacity-20' : ''
+        } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
+          isConnected && !isHovered ? 'ring-2 ring-amber-300 ring-offset-1' : ''
+        } ${draggingId === block.key ? 'opacity-40' : ''} ${isHovered ? 'shadow-md z-10' : ''}`}
         style={{
           top: topPx,
           height: heightPx,
@@ -447,18 +564,53 @@ export function CalendarBoard({
     );
   }
 
+  // Column width in px (for SVG positioning)
+  const colWidth = Math.max(80, (boardWidth - GUTTER_W) / COLUMNS.length);
+
+  // SVG overlay for connection lines
+  const connectionLines = useMemo(() => {
+    return connections.map((conn, i) => {
+      const x1 = GUTTER_W + conn.fromCol * colWidth + colWidth - 2;
+      const x2 = GUTTER_W + conn.toCol * colWidth + 2;
+      const isHovered = hoveredConnections.size > 0 && (hoveredConnections.has(conn.fromKey) || hoveredConnections.has(conn.toKey));
+      const midX = (x1 + x2) / 2;
+      return (
+        <path
+          key={i}
+          d={`M ${x1} ${conn.y1} C ${midX} ${conn.y1}, ${midX} ${conn.y2}, ${x2} ${conn.y2}`}
+          fill="none"
+          stroke={isHovered ? '#f59e0b' : '#cbd5e1'}
+          strokeWidth={isHovered ? 1.5 : 1}
+          strokeDasharray={isHovered ? '0' : '3 3'}
+          opacity={isHovered ? 0.8 : 0.4}
+          style={{ transition: 'stroke 0.15s, opacity 0.15s, stroke-width 0.15s' }}
+        />
+      );
+    });
+  }, [connections, hoveredConnections, colWidth, hourPx]);
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Calendar board — scrollable */}
-      <div ref={scrollRef} className="flex-1 overflow-auto">
-        <div className="flex gap-0" style={{ minHeight: totalPx + 40 }}>
+      <div ref={scrollRef} className="flex-1 overflow-auto" onWheel={handleWheel}>
+        <div ref={boardRef} className="relative flex gap-0" style={{ minHeight: totalPx + 40 }}>
+          {/* SVG connection overlay */}
+          <svg
+            className="pointer-events-none absolute inset-0 z-[5]"
+            width={boardWidth}
+            height={totalPx + 40}
+            style={{ overflow: 'visible' }}
+          >
+            {connectionLines}
+          </svg>
+
           {/* Time gutter */}
           <div className="sticky left-0 z-20 w-12 shrink-0 bg-stone-50/80 backdrop-blur-sm">
             {hours.map((h) => (
               <div
                 key={h}
                 className="relative border-t border-stone-100 text-right"
-                style={{ height: HOUR_PX }}
+                style={{ height: hourPx }}
               >
                 <span className="absolute -top-1.5 right-1.5 rounded bg-white px-0.5 text-[9px] font-medium text-stone-400">
                   {String(h % 24).padStart(2, '0')}:00
@@ -490,7 +642,7 @@ export function CalendarBoard({
                     <div
                       key={h}
                       className="absolute left-0 right-0 border-t border-stone-100"
-                      style={{ top: ((h * 60 - displayStart) / 60) * HOUR_PX }}
+                      style={{ top: ((h * 60 - displayStart) / 60) * hourPx }}
                     />
                   ))}
 
@@ -511,7 +663,7 @@ export function CalendarBoard({
             Recent Cases
           </span>
           <span className="text-[10px] text-stone-400">
-            Drag signals here to create timesheet entries
+            Drag signals (or connected groups) here to create timesheet entries
           </span>
         </div>
         <div className="flex flex-wrap gap-2">
