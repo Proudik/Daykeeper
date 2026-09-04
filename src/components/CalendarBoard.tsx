@@ -228,7 +228,6 @@ export function CalendarBoard({
 }: CalendarBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoveredBlock, setHoveredBlock] = useState<string | null>(null);
-  const [hoverPosition, setHoverPosition] = useState<{ top: number; left: number } | null>(null);
   const [hourPx, setHourPx] = useState(DEFAULT_HOUR_PX);
   const scrollRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -408,7 +407,7 @@ export function CalendarBoard({
     const matterId = block.itemIds.map((id) => manualOverrides.get(id)).find((v) => v !== undefined && v !== null);
     const matter = matterId ? matters.find((m) => m.id === matterId) : null;
     const matterColor = matter ? MATTER_PALETTE[matters.indexOf(matter) % MATTER_PALETTE.length] : null;
-    const tooltipWidth = 240;
+    const expandedWidth = Math.min(92, Math.max(width, 48));
 
     return (
       <div
@@ -416,40 +415,35 @@ export function CalendarBoard({
         draggable
         onDragStart={(e) => handleDragStart(e, block)}
         onDragEnd={handleDragEnd}
-        onMouseEnter={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
+        onMouseEnter={() => {
           setHoveredBlock(block.key);
-          setHoverPosition({
-            top: Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 168)),
-            left: Math.max(8, Math.min(rect.left, window.innerWidth - tooltipWidth - 8)),
-          });
         }}
         onMouseLeave={() => {
           setHoveredBlock(null);
-          setHoverPosition(null);
         }}
-        className={`group absolute z-10 cursor-grab overflow-visible rounded-md border text-left transition-shadow duration-150 ${
+        className={`group absolute z-10 cursor-grab rounded-md border text-left transition-all duration-150 ${
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
-        } ${isHovered ? 'z-30 shadow-md' : ''}`}
+        } ${isHovered ? 'z-30 overflow-visible shadow-md' : 'overflow-hidden'}`}
         style={{
           top: topPx,
-          height: heightPx,
+          height: isHovered ? 'auto' : heightPx,
+          minHeight: heightPx,
           left: `${left}%`,
-          width: `${width}%`,
+          width: `${isHovered ? expandedWidth : width}%`,
           borderColor: block.color,
           backgroundColor: block.isInTimesheet ? `${block.color}55` : `${block.color}18`,
         }}
       >
-        <div className="relative h-full overflow-hidden border-l-[3px] px-1.5 py-1" style={{ borderColor: block.color }}>
+        <div className="relative min-h-full border-l-[3px] px-1.5 py-1" style={{ borderColor: block.color }}>
           {heightPx >= 20 && (
-            <p className="truncate text-[10px] font-medium leading-tight text-stone-700">
+            <p className={`text-[10px] font-medium leading-tight text-stone-700 ${isHovered ? 'break-words' : 'truncate'}`}>
               {block.label}
             </p>
           )}
           {heightPx >= 34 && (
-            <p className="truncate text-[9px] leading-tight text-stone-500">
+            <p className={`text-[9px] leading-tight text-stone-500 ${isHovered ? 'break-words' : 'truncate'}`}>
               {block.subLabel}
             </p>
           )}
@@ -461,40 +455,14 @@ export function CalendarBoard({
           {matter && matterColor && (
             <div className="mt-0.5 flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm" style={{ backgroundColor: matterColor }}>
               <Briefcase size={7} className="shrink-0" />
-              <span className="truncate">{matter.name}</span>
+              <span className={isHovered ? 'break-words' : 'truncate'}>{matter.name}</span>
             </div>
           )}
           {block.isUsed && (
             <CheckCircle2 size={10} className="absolute right-1 top-1 text-emerald-600" />
           )}
         </div>
-        {isHovered && hoverPosition && (
-          <div
-            className="pointer-events-none fixed z-[100] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border bg-white px-3 py-2.5 shadow-lg shadow-stone-900/15"
-            style={{
-              top: hoverPosition.top,
-              left: hoverPosition.left,
-              width: `min(${tooltipWidth}px, calc(100vw - 16px))`,
-              borderColor: `${block.color}80`,
-            }}
-          >
-            <div className="mb-1.5 flex items-center gap-1.5 border-b border-stone-100 pb-1.5">
-              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: block.color }} />
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">Signal details</span>
-            </div>
-            <p className="break-words text-[12px] font-semibold leading-snug text-stone-800">{block.label}</p>
-            <p className="mt-1 text-[11px] leading-snug text-stone-500">{block.subLabel}</p>
-            {block.isAggregate && (
-              <p className="mt-1 text-[10px] font-medium text-stone-500">{block.itemIds.length} signals</p>
-            )}
-            {matter && matterColor && (
-              <div className="mt-1.5 flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-white" style={{ backgroundColor: matterColor }}>
-                <Briefcase size={10} className="shrink-0" />
-                <span className="break-words">{matter.name}</span>
-              </div>
-            )}
-          </div>
-        )}
+
       </div>
     );
   }
