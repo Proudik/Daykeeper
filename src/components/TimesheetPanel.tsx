@@ -82,6 +82,7 @@ export function TimesheetPanel({
   const [emptyDropActive, setEmptyDropActive] = useState(false);
   const [matterDropActive, setMatterDropActive] = useState(false);
   const [signalContexts, setSignalContexts] = useState<Record<string, string>>({});
+  const [isReviewMode, setIsReviewMode] = useState(false);
 
   useEffect(() => {
     if (lastDropMatterId) {
@@ -90,6 +91,15 @@ export function TimesheetPanel({
       return () => clearTimeout(t);
     }
   }, [lastDropMatterId]);
+
+  useEffect(() => {
+    if (!isReviewMode) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsReviewMode(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isReviewMode]);
 
   const matterColorMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -177,7 +187,22 @@ export function TimesheetPanel({
   const allExpanded = entries.length > 0 && expandedEntries.size === entries.length;
 
   return (
-    <div className="relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30">
+    <>
+      {isReviewMode && (
+        <button
+          type="button"
+          aria-label="Close focused timesheet preview"
+          onClick={() => setIsReviewMode(false)}
+          className="animate-fade-in fixed inset-0 z-40 cursor-default bg-stone-950/20 backdrop-blur-[1px]"
+        />
+      )}
+      <div
+        className={`relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30 ${
+          isReviewMode
+            ? 'animate-slide-in-right fixed inset-y-3 right-3 z-50 w-[min(720px,calc(100vw-24px))]'
+            : ''
+        }`}
+      >
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
         <div className="flex items-center justify-between">
@@ -186,7 +211,7 @@ export function TimesheetPanel({
               <Sparkles size={15} className="text-accent-700" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-stone-800">Timesheet Preview</h3>
+              <h3 className="text-sm font-semibold text-stone-800">{isReviewMode ? 'Timesheet Review' : 'Timesheet Preview'}</h3>
               <p className="text-[11px] text-stone-400">
                 {hasAssignedSessions
                   ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} · ${formatMinutes(totalMinutes)}`
@@ -197,11 +222,18 @@ export function TimesheetPanel({
           <div className="flex items-center gap-1.5">
             {entries.length > 0 && (
               <button
-                onClick={allExpanded ? collapseAll : expandAll}
+                onClick={() => {
+                  if (isReviewMode) {
+                    setIsReviewMode(false);
+                  } else {
+                    setIsReviewMode(true);
+                  }
+                }}
                 className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
-                title={allExpanded ? 'Collapse all' : 'Expand all'}
+                title={isReviewMode ? 'Close focused preview' : 'Open focused preview'}
+                aria-label={isReviewMode ? 'Close focused preview' : 'Open focused preview'}
               >
-                {allExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                {isReviewMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
             )}
             <button
@@ -241,7 +273,7 @@ export function TimesheetPanel({
       </div>
 
       {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} className={`flex-1 overflow-y-auto ${isReviewMode ? 'px-6 py-5' : 'px-4 py-3'}`}>
         {generating && <GeneratingMessage />}
         {generationErrors.length > 0 ? (
           <div className="space-y-2">
@@ -253,7 +285,7 @@ export function TimesheetPanel({
             ))}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className={`space-y-3 ${isReviewMode ? 'sm:space-y-4' : ''}`}>
             {Array.from(matterGroups.entries()).map(([matterKey, groupEntries]) => {
               const matter = matters.find((m) => m.id === matterKey);
               const color = matter ? matterColorMap.get(matter.id) ?? '#78716c' : '#d97706';
@@ -286,10 +318,10 @@ export function TimesheetPanel({
                   style={{ animation: 'fadeInUp 0.3s ease-out both' }}
                 >
                   {/* Matter header — no arrows, always expanded */}
-                  <div className="flex w-full items-center gap-2 px-3 py-2.5">
+                  <div className={`flex w-full items-center gap-2 ${isReviewMode ? 'px-4 py-3' : 'px-3 py-2.5'}`}>
                     <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                     <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-stone-800">
+                      <span className={`block truncate font-semibold text-stone-800 ${isReviewMode ? 'text-base' : 'text-sm'}`}>
                         {matter?.case_id_visible ?? matter?.name ?? 'Unassigned'}
                       </span>
                       {matter && (
@@ -325,6 +357,7 @@ export function TimesheetPanel({
                           onUpdate={(patch) => updateEntry(entry.id, patch)}
                           signalContexts={signalContexts}
                           setSignalContexts={setSignalContexts}
+                          spacious={isReviewMode}
                         />
                       </div>
                     ))}
@@ -391,7 +424,7 @@ export function TimesheetPanel({
 
       {/* Footer */}
       {entries.length > 0 && (
-        <div className="shrink-0 border-t border-stone-200 bg-gradient-to-b from-white to-stone-50 px-4 py-3">
+        <div className={`shrink-0 border-t border-stone-200 bg-gradient-to-b from-white to-stone-50 ${isReviewMode ? 'px-6 py-4' : 'px-4 py-3'}`}>
           <div className="flex items-center justify-between">
             <div className="text-xs text-stone-500">
               {existingRecordedMinutes > 0 && (
@@ -403,11 +436,30 @@ export function TimesheetPanel({
                 Draft: <span className="font-semibold text-stone-800">{formatMinutes(totalMinutes)}</span>
               </span>
             </div>
-            <button
-              onClick={() => onSave(entries)}
-              disabled={saving}
-              className={`btn-primary text-sm ${saving ? 'progress-shimmer' : ''}`}
-            >
+            <div className="flex items-center gap-2">
+              {!isReviewMode && (
+                <button
+                  onClick={() => setIsReviewMode(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50"
+                >
+                  <Maximize2 size={13} />
+                  Review
+                </button>
+              )}
+              {isReviewMode && (
+                <button
+                  onClick={() => setIsReviewMode(false)}
+                  className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50"
+                >
+                  <X size={13} />
+                  Close
+                </button>
+              )}
+              <button
+                onClick={() => onSave(entries)}
+                disabled={saving}
+                className={`btn-primary text-sm ${saving ? 'progress-shimmer' : ''}`}
+              >
               {saving ? (
                 <span className="flex items-center gap-2">
                   <Loader2 size={14} className="animate-spin-slow" />
@@ -433,8 +485,10 @@ export function TimesheetPanel({
             </div>
           )}
         </div>
+        </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -447,6 +501,7 @@ function ExpandableEntryRow({
   onUpdate,
   signalContexts,
   setSignalContexts,
+  spacious = false,
 }: {
   entry: DraftTimesheetEntry;
   items: ActivityItem[];
@@ -456,6 +511,7 @@ function ExpandableEntryRow({
   onUpdate: (patch: Partial<DraftTimesheetEntry>) => void;
   signalContexts: Record<string, string>;
   setSignalContexts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  spacious?: boolean;
 }) {
   const sourceItems = (entry.sourceItemIds ?? [])
     .map((id) => items.find((item) => item.id === id))
@@ -466,7 +522,7 @@ function ExpandableEntryRow({
       {/* Collapsed view — click to expand */}
       <button
         onClick={onToggle}
-        className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-stone-50"
+        className={`flex w-full items-start gap-2 ${spacious ? 'px-4 py-3.5' : 'px-3 py-2.5'} text-left transition-colors hover:bg-stone-50`}
       >
         <div className="mt-1.5 h-1 w-1 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <div className="min-w-0 flex-1">
@@ -497,7 +553,7 @@ function ExpandableEntryRow({
 
       {/* Expanded view — fine-tuning options */}
       {isExpanded && (
-        <div className="border-t border-stone-100 bg-stone-50/60 px-3 py-3 animate-fade-in">
+        <div className={`border-t border-stone-100 bg-stone-50/60 ${spacious ? 'px-4 py-4' : 'px-3 py-3'} animate-fade-in`}>
           {/* Description */}
           <div className="mb-3">
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-stone-400">
