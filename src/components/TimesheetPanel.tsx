@@ -19,7 +19,6 @@ import {
   Globe,
   CalendarDays,
   MousePointer2,
-  FolderOpen,
 } from 'lucide-react';
 
 interface TimesheetPanelProps {
@@ -39,7 +38,6 @@ interface TimesheetPanelProps {
   onRegenerate: () => void;
   onDropSignal: (itemId: string, matterId: string) => void;
   onDropToEmpty?: (itemId: string) => void;
-  onDropMatter?: (matterId: string) => void;
   onHoverEntry?: (itemIds: string[] | null) => void;
   hasAssignedSessions: boolean;
   lastDropMatterId: string | null;
@@ -68,7 +66,6 @@ export function TimesheetPanel({
   onRegenerate,
   onDropSignal,
   onDropToEmpty,
-  onDropMatter,
   onHoverEntry,
   hasAssignedSessions,
   lastDropMatterId,
@@ -78,7 +75,6 @@ export function TimesheetPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [dropFlash, setDropFlash] = useState<string | null>(null);
   const [emptyDropActive, setEmptyDropActive] = useState(false);
-  const [matterDropActive, setMatterDropActive] = useState(false);
   const [signalContexts, setSignalContexts] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -131,14 +127,6 @@ export function TimesheetPanel({
     const itemId = event.dataTransfer.getData('text/daykeeper-item');
     setDropTarget(null);
     if (itemId) onDropSignal(itemId, matterId);
-  }
-
-  function handleWholeMatterDrop(event: DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    const matterId = event.dataTransfer.getData('text/daykeeper-matter');
-    setMatterDropActive(false);
-    if (matterId && onDropMatter) onDropMatter(matterId);
   }
 
   function copyAll() {
@@ -331,33 +319,6 @@ export function TimesheetPanel({
             onUpdate={(patch) => updateEntry(expandedEntry.id, patch)}
             onClose={() => setExpandedEntryId(null)}
           />
-        )}
-
-        {/* Drop zone for dragging a whole case into the timesheet */}
-        {onDropMatter && !generating && !expandedEntry && (
-          <div
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = 'copy';
-              if (!matterDropActive) setMatterDropActive(true);
-            }}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                setMatterDropActive(false);
-              }
-            }}
-            onDrop={handleWholeMatterDrop}
-            className={`${entries.length > 0 ? 'mt-3 ' : ''}mb-2 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-2.5 text-center transition-all duration-200 ${
-              matterDropActive
-                ? 'border-accent-400 bg-accent-50/60 scale-[1.01]'
-                : 'border-stone-200 bg-stone-50/40'
-            }`}
-          >
-            <FolderOpen size={15} className={matterDropActive ? 'text-accent-600' : 'text-stone-300'} />
-            <p className={`text-xs ${matterDropActive ? 'text-accent-700' : 'text-stone-400'}`}>
-              {matterDropActive ? 'Drop case to generate timesheet' : 'Drag a case here to add all its signals'}
-            </p>
-          </div>
         )}
 
         {/* Persistent drop zone for unassigned signals */}
