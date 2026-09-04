@@ -559,12 +559,25 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
       targetHours,
       exclusionRules: [],
     });
-    if (!scProviderData) return [];
-    const raw = resolveDay(
-      estResult.entries, visibleSelectedItems,
-      matters, scProviderData.contacts, scProviderData.matterContacts,
-      scProviderData.emailLookup, 'current-user', matterRules,
-    );
+    let raw: ResolvedSession[];
+    if (scProviderData) {
+      raw = resolveDay(
+        estResult.entries, visibleSelectedItems,
+        matters, scProviderData.contacts, scProviderData.matterContacts,
+        scProviderData.emailLookup, 'current-user', matterRules,
+      );
+    } else {
+      raw = estResult.entries.map((entry) => ({
+        sessionId: entry.id,
+        sourceItemIds: entry.sourceItemIds,
+        candidates: [],
+        matterId: null,
+        matter: null,
+        confidence: 'unassigned' as const,
+        reason: 'No SingleCase connection',
+        isOverride: false,
+      }));
+    }
     if (manualOverrides.size === 0) return raw;
     return applyManualOverrides(raw, estResult.entries, manualOverrides, matters);
   }, [visibleSelectedItems, profile, workStart, workEnd, rounding, targetHours, matterRules, matters, scProviderData, manualOverrides]);
@@ -653,12 +666,26 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         targetHours,
         exclusionRules: [],
       });
-      const scData = scProviderData!;
-      const rawSessions = resolveDay(
-        estResult.entries, generationItems,
-        matters, scData.contacts, scData.matterContacts,
-        scData.emailLookup, 'current-user', matterRules,
-      );
+      let rawSessions: ResolvedSession[];
+      if (scProviderData) {
+        const scData = scProviderData;
+        rawSessions = resolveDay(
+          estResult.entries, generationItems,
+          matters, scData.contacts, scData.matterContacts,
+          scData.emailLookup, 'current-user', matterRules,
+        );
+      } else {
+        rawSessions = estResult.entries.map((entry) => ({
+          sessionId: entry.id,
+          sourceItemIds: entry.sourceItemIds,
+          candidates: [],
+          matterId: null,
+          matter: null,
+          confidence: 'unassigned' as const,
+          reason: 'No SingleCase connection',
+          isOverride: false,
+        }));
+      }
       const sessions = manualOverrides.size > 0
         ? applyManualOverrides(rawSessions, estResult.entries, manualOverrides, matters)
         : rawSessions;
