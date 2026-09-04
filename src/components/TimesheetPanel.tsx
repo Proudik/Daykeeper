@@ -199,9 +199,10 @@ export function TimesheetPanel({
       <div
         className={`relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30 ${
           isReviewMode
-            ? 'animate-slide-in-right fixed inset-y-3 right-3 z-50 w-[min(720px,calc(100vw-24px))]'
+            ? 'animate-slide-in-right fixed inset-y-3 right-3 z-50 max-w-[calc(100vw-24px)]'
             : ''
         }`}
+        style={isReviewMode ? { width: 'min(78vw, 1080px)' } : undefined}
       >
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
@@ -553,7 +554,7 @@ function ExpandableEntryRow({
 
       {/* Expanded view — fine-tuning options */}
       {isExpanded && (
-        <div className={`border-t border-stone-100 bg-stone-50/60 ${spacious ? 'px-4 py-4' : 'px-3 py-3'} animate-fade-in`}>
+        <div className={`border-t border-stone-100 bg-stone-50/60 ${spacious ? 'grid grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]' : 'px-3 py-3'} animate-fade-in`}>
           {/* Description */}
           <div className="mb-3">
             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-stone-400">
@@ -600,7 +601,7 @@ function ExpandableEntryRow({
 
           {/* Source signals */}
           {sourceItems.length > 0 && (
-            <div>
+            <div className={spacious ? 'lg:col-start-2 lg:row-span-2' : ''}>
               <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
                 <FileText size={12} className="text-accent-600" />
                 Source signals
