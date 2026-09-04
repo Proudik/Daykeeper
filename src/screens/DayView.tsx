@@ -538,68 +538,83 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   // Live estimate as user toggles items (deterministic, no AI call)
   const liveEstimate = useMemo(() => {
     if (visibleSelectedItems.length === 0) return null;
-    const estResult = estimate(visibleSelectedItems, {
-      timezone: profile?.timezone ?? 'Europe/Prague',
-      workStart,
-      workEnd,
-      rounding,
-      targetHours,
-      exclusionRules: [],
-    });
-    return estResult;
+    try {
+      const estResult = estimate(visibleSelectedItems, {
+        timezone: profile?.timezone ?? 'Europe/Prague',
+        workStart,
+        workEnd,
+        rounding,
+        targetHours,
+        exclusionRules: [],
+      });
+      return estResult;
+    } catch (err) {
+      console.error('liveEstimate failed:', err);
+      return null;
+    }
   }, [visibleSelectedItems, profile, workStart, workEnd, rounding, targetHours]);
 
   // Run estimator + scoring resolver for the assignment tray
   const resolvedSessions = useMemo<ResolvedSession[]>(() => {
     if (visibleSelectedItems.length === 0) return [];
-    const estResult = estimate(visibleSelectedItems, {
-      timezone: profile?.timezone ?? 'Europe/Prague',
-      workStart,
-      workEnd,
-      rounding,
-      targetHours,
-      exclusionRules: [],
-    });
-    let raw: ResolvedSession[];
-    if (scProviderData) {
-      raw = resolveDay(
-        estResult.entries, visibleSelectedItems,
-        displayMatters, scProviderData.contacts, scProviderData.matterContacts,
-        scProviderData.emailLookup, 'current-user', matterRules,
-      );
-    } else {
-      raw = estResult.entries.map((entry) => ({
-        sessionId: entry.id,
-        sourceItemIds: entry.sourceItemIds,
-        candidates: [],
-        matterId: null,
-        matter: null,
-        confidence: 'unassigned' as const,
-        reason: 'No SingleCase connection',
-        isOverride: false,
-      }));
+    try {
+      const estResult = estimate(visibleSelectedItems, {
+        timezone: profile?.timezone ?? 'Europe/Prague',
+        workStart,
+        workEnd,
+        rounding,
+        targetHours,
+        exclusionRules: [],
+      });
+      let raw: ResolvedSession[];
+      if (scProviderData) {
+        raw = resolveDay(
+          estResult.entries, visibleSelectedItems,
+          displayMatters, scProviderData.contacts, scProviderData.matterContacts,
+          scProviderData.emailLookup, 'current-user', matterRules,
+        );
+      } else {
+        raw = estResult.entries.map((entry) => ({
+          sessionId: entry.id,
+          sourceItemIds: entry.sourceItemIds,
+          candidates: [],
+          matterId: null,
+          matter: null,
+          confidence: 'unassigned' as const,
+          reason: 'No SingleCase connection',
+          isOverride: false,
+        }));
+      }
+      if (manualOverrides.size === 0) return raw;
+      return applyManualOverrides(raw, estResult.entries, manualOverrides, displayMatters);
+    } catch (err) {
+      console.error('resolvedSessions failed:', err);
+      return [];
     }
-    if (manualOverrides.size === 0) return raw;
-    return applyManualOverrides(raw, estResult.entries, manualOverrides, displayMatters);
   }, [visibleSelectedItems, profile, workStart, workEnd, rounding, targetHours, matterRules, displayMatters, scProviderData, manualOverrides]);
 
   // Also keep the old attribution for timeline coloring
   const matterGroups = useMemo<MatterGroup[]>(() => {
     if (visibleSelectedItems.length === 0) return [];
-    const estResult = estimate(visibleSelectedItems, {
-      timezone: profile?.timezone ?? 'Europe/Prague',
-      workStart,
-      workEnd,
-      rounding,
-      targetHours,
-      exclusionRules: [],
-    });
-    const attributed = attributeEntries(estResult.entries, visibleSelectedItems, {
-      emailLookup: scProviderData?.emailLookup ?? { byAddress: new Map(), byDomain: new Map() },
-      matterRules,
-      displayMatters,
-    });
-    return groupByMatter(attributed, displayMatters);
+    try {
+      const estResult = estimate(visibleSelectedItems, {
+        timezone: profile?.timezone ?? 'Europe/Prague',
+        workStart,
+        workEnd,
+        rounding,
+        targetHours,
+        exclusionRules: [],
+      });
+      const attributed = attributeEntries(estResult.entries, visibleSelectedItems, {
+        emailLookup: scProviderData?.emailLookup ?? { byAddress: new Map(), byDomain: new Map() },
+        matterRules,
+        matters: displayMatters,
+      });
+      return groupByMatter(attributed, displayMatters);
+    } catch (err) {
+      console.error('matterGroups failed:', err);
+      return [];
+    }
   }, [visibleSelectedItems, displayMatters, profile, workStart, workEnd, rounding, targetHours, matterRules, scProviderData]);
 
   const unassignedGroup = matterGroups.find((g) => g.isUnassigned && !g.isInternal);
