@@ -200,6 +200,42 @@ export async function generateDraftEntries(
     } satisfies DraftTimesheetEntry;
   });
 
+  // Find assigned matters the AI omitted — create fallback entries for them
+  // so no assigned session is silently dropped from the timesheet.
+  const coveredMatterIds = new Set(allEntries.map((e) => e.matterId));
+  const missedMatters = Array.from(sessionsByMatter.entries()).filter(
+    ([matterId]) => !coveredMatterIds.has(matterId),
+  );
+  for (const [matterId, group] of missedMatters) {
+    const entries = group
+      .map((s) => entryBySessionId.get(s.sessionId))
+      .filter((e): e is EstimatedEntry => e !== undefined);
+    const allSourceItemIds = entries.flatMap((e) => e.sourceItemIds);
+    const items = allSourceItemIds
+      .map((id) => selectedItems.find((i) => i.id === id))
+      .filter((i): i is ActivityItem => i !== undefined);
+    const totalMinutes = entries.reduce((s, e) => s + e.roundedMinutes, 0);
+    const description = items.map((i) => i.summary).join("; ") || entries[0]?.label || "Manual entry required";
+    const confidence = entries.every((e) => e.confidence === 'high') ? 'high' : entries.some((e) => e.confidence === 'low') ? 'low' : 'medium';
+
+    allEntries.push({
+      id: `fallback-${matterId}`,
+      description,
+      suggestedMinutes: totalMinutes,
+      confirmedMinutes: totalMinutes,
+      activityType: null,
+      billable: true,
+      confidence,
+      sourceSummary: entries.map((e) => `${e.provider} ${e.roundedMinutes}min`).join(", "),
+      sourceItemIds: allSourceItemIds,
+      matterId,
+      matterConfidence: group[0].confidence as DraftTimesheetEntry['matterConfidence'],
+      matterReason: group[0].reason,
+      attributionSource: 'estimator' as const,
+      manualEntryId: null,
+    });
+  }
+
   return { entries: allEntries, estimate: estimateResult, errors: [] };
 }
 
