@@ -347,7 +347,7 @@ export function TimesheetPanel({
               }
             }}
             onDrop={handleWholeMatterDrop}
-            className={`mb-2 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-2.5 text-center transition-all duration-200 ${
+            className={`${entries.length > 0 ? 'mt-3 ' : ''}mb-2 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-2.5 text-center transition-all duration-200 ${
               matterDropActive
                 ? 'border-accent-400 bg-accent-50/60 scale-[1.01]'
                 : 'border-stone-200 bg-stone-50/40'
