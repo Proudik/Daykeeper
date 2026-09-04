@@ -32,26 +32,18 @@ import {
 import { resolveDay } from '@/lib/attribution/resolver-data';
 import type { ResolvedSession } from '@/lib/attribution/scoring-resolver';
 import { MatterPicker } from '@/components/MatterPicker';
-import { AssignmentTray } from '@/components/AssignmentTray';
-import { ReviewCardList } from '@/components/ReviewCardList';
-import { ActivityList } from '@/components/ActivityList';
 import { CalendarBoard } from '@/components/CalendarBoard';
-import { VerticalTimeline } from '@/components/VerticalTimeline';
 import { TimesheetPanel } from '@/components/TimesheetPanel';
 import {
-  ChevronDown,
-  ChevronRight,
   Clock,
   AlertCircle,
   CheckCircle2,
-  FolderOpen,
   Inbox,
   Lock,
   Loader2,
   RefreshCw,
   ListChecks,
   FileText,
-  Sparkles,
   Briefcase,
   FlaskConical,
 } from 'lucide-react';
@@ -62,7 +54,7 @@ interface DayViewProps {
   onDateChange: (d: string) => void;
 }
 
-type GroupMode = 'matter' | 'app' | 'review' | 'board';
+
 
 // Vibrant, distinct color palette for matters (up to 12 per day)
 const MATTER_PALETTE = [
@@ -128,7 +120,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const [estimateResult, setEstimateResult] = useState<EstimateResult | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generationErrors, setGenerationErrors] = useState<string[]>([]);
-  const [groupMode, setGroupMode] = useState<GroupMode>('matter');
+
   const [matterRules, setMatterRules] = useState<MatterRule[]>([]);
   const [recentMatterIds, setRecentMatterIds] = useState<string[]>([]);
   const [manualOverrides, setManualOverrides] = useState<Map<string, string | null>>(new Map());
@@ -151,7 +143,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     const check = () => {
       const mobile = Boolean(document.querySelector('.simulate-mobile'));
       setIsMobile(mobile);
-      if (mobile) setGroupMode('review');
+
     };
     check();
     const observer = new MutationObserver(check);
@@ -921,33 +913,6 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             >
               <RefreshCw size={15} className={loading ? 'animate-spin-slow' : ''} />
             </button>
-            {/* Group mode toggle */}
-            <div className="flex shrink-0 items-center gap-1 rounded-md bg-stone-100 p-0.5">
-            <button
-              onClick={() => setGroupMode('matter')}
-              className={`rounded px-2 py-1 text-xs font-medium ${groupMode === 'matter' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}
-            >
-              Matter
-            </button>
-            <button
-              onClick={() => setGroupMode('app')}
-              className={`rounded px-2 py-1 text-xs font-medium ${groupMode === 'app' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}
-            >
-              App
-            </button>
-            <button
-              onClick={() => setGroupMode('review')}
-              className={`rounded px-2 py-1 text-xs font-medium ${groupMode === 'review' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}
-            >
-              Review
-            </button>
-            <button
-              onClick={() => setGroupMode('board')}
-              className={`rounded px-2 py-1 text-xs font-medium ${groupMode === 'board' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}
-            >
-              Board
-            </button>
-          </div>
           </div>
         </div>
       </div>
@@ -1094,50 +1059,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                 </>
               )}
             </div>
-          ) : groupMode === 'review' ? (
-            <ReviewCardList
-              items={visibleSelectedItems}
-              sessions={resolvedSessions}
-              matters={matters}
-              clients={clients}
-              rules={matterRules}
-              timezone={profile?.timezone}
-              recentMatterIds={recentMatterIds}
-              onAssign={(itemId, matterId) => {
-                setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
-                setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, matterId); return next; });
-              }}
-              onNonBillable={(itemId) => {
-                setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, null); return next; });
-              }}
-              onIgnore={(itemId) => {
-                setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, null); return next; });
-              }}
-              onCreateRule={async (rule) => {
-                const newRule: MatterRule = {
-                  ...rule,
-                  id: `rule-${Date.now()}`,
-                  created_at: new Date().toISOString(),
-                  hit_count: 0,
-                  source: 'user_confirmed',
-                  user_id: profile?.user_id ?? '',
-                } as MatterRule;
-                setMatterRules((prev) => [...prev, newRule]);
-                if (profile?.user_id) {
-                  await supabase.from('matter_rules').insert({
-                    user_id: profile.user_id,
-                    matter_id: rule.matter_id,
-                    rule_type: rule.rule_type,
-                    value: rule.value,
-                    source: 'user_confirmed',
-                  });
-                }
-              }}
-              onUndo={(itemId) => {
-                setManualOverrides((prev) => { const next = new Map(prev); next.delete(itemId); return next; });
-              }}
-            />
-          ) : groupMode === 'board' ? (
+          ) : (
             <CalendarBoard
               items={visibleSelectedItems}
               matters={matters}
@@ -1188,91 +1110,6 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                 }
               }}
             />
-          ) : groupMode === 'matter' ? (
-            <div className="flex gap-3">
-              <div className="min-w-0 flex-1">
-                <AssignmentTray
-                  items={visibleSelectedItems}
-                  sessions={resolvedSessions}
-                  matters={matters}
-                  clients={clients}
-                  rules={matterRules}
-                  recentMatterIds={recentMatterIds}
-                  timezone={profile?.timezone}
-                  onAssign={(itemId, matterId) => {
-                    setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
-                    setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, matterId); return next; });
-                  }}
-                  onNonBillable={(itemId) => {
-                    setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, null); return next; });
-                  }}
-                  onIgnore={(itemId) => {
-                    setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, null); return next; });
-                  }}
-                  onCreateRule={async (rule) => {
-                    const newRule: MatterRule = {
-                      ...rule,
-                      id: `rule-${Date.now()}`,
-                      created_at: new Date().toISOString(),
-                      hit_count: 0,
-                      source: 'user_confirmed',
-                    };
-                    setMatterRules((prev) => [...prev, newRule]);
-                    if (profile?.user_id) {
-                      await supabase.from('matter_rules').insert({
-                        user_id: profile.user_id,
-                        matter_id: rule.matter_id,
-                        rule_type: rule.rule_type,
-                        value: rule.value,
-                        source: 'user_confirmed',
-                      });
-                    }
-                  }}
-                  onUndo={(itemId) => {
-                    setManualOverrides((prev) => { const next = new Map(prev); next.delete(itemId); return next; });
-                  }}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-3">
-              <div className="sticky top-3 hidden w-[260px] shrink-0 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm lg:block">
-                <div className="border-b border-stone-100 bg-stone-50 px-4 py-2.5">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">Day flow</div>
-                  <div className="mt-0.5 text-[10px] text-stone-400">10-minute-plus signals</div>
-                </div>
-                <div className="max-h-[calc(100vh-13rem)] overflow-y-auto">
-                <VerticalTimeline
-                  items={displayItems}
-                  timezone={profile?.timezone}
-                  workStart={workStart}
-                  workEnd={workEnd}
-                  usedItemIds={usedItemIds}
-                  generatedItemIds={generatedItemIds}
-                />
-                </div>
-              </div>
-              <div className="card min-w-0 flex-1 overflow-hidden">
-                <ActivityList
-                  items={displayItems}
-                  selectedIds={displaySelectedIds}
-                  onToggle={toggle}
-                  collapsedSections={collapsedSections}
-                  onToggleSection={toggleSection}
-                  onToggleProviderAll={toggleProviderAll}
-                  focusedIndex={focusedIndex}
-                  onFocusIndex={setFocusedIndex}
-                  flatIds={flatIds}
-                  usedItemIds={usedItemIds}
-                  generatedItemIds={generatedItemIds}
-                  timezone={profile?.timezone}
-                  onDragStart={() => undefined}
-                  onDeleteItem={handleDeleteItem}
-                  manualOverrides={manualOverrides}
-                  matters={matters}
-                />
-              </div>
-            </div>
           )}
         </div>
 
@@ -1469,277 +1306,3 @@ function RecentCasesBar({
   );
 }
 
-// --- Matter-grouped view ----------------------------------------------------
-
-interface MatterGroupedViewProps {
-  groups: MatterGroup[];
-  internalGroups: MatterGroup[];
-  unassignedGroup: MatterGroup | undefined;
-  collapsedSections: Set<string>;
-  onToggleSection: (key: string) => void;
-  selectedIds: Set<string>;
-  onToggle: (id: string) => void;
-  items: ActivityItem[];
-  flatIds: string[];
-  focusedIndex: number | null;
-  onFocusIndex: (i: number | null) => void;
-  collapsedProviders: Set<Provider>;
-  onToggleProvider: (p: Provider) => void;
-  onToggleProviderAll: (p: Provider, select: boolean) => void;
-}
-
-function MatterGroupedView({
-  groups,
-  internalGroups,
-  unassignedGroup,
-  collapsedSections,
-  onToggleSection,
-  selectedIds,
-  onToggle,
-  items,
-  flatIds,
-  focusedIndex,
-  onFocusIndex,
-  collapsedProviders,
-  onToggleProvider,
-  onToggleProviderAll,
-}: MatterGroupedViewProps) {
-  return (
-    <div className="space-y-3">
-      {/* Unassigned tray */}
-      {unassignedGroup && unassignedGroup.entries.length > 0 ? (
-        <div className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-          <div className="flex items-center gap-3 border-b border-stone-100 bg-gradient-to-r from-stone-50 to-white px-4 py-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-100">
-              <AlertCircle size={16} className="text-stone-500" />
-            </span>
-            <span className="text-sm font-semibold text-stone-800">
-              {unassignedGroup.entries.length} {unassignedGroup.entries.length === 1 ? 'entry' : 'entries'} need a matter
-            </span>
-            <span className="ml-auto text-xs font-medium text-stone-500">
-              {formatMinutes(unassignedGroup.totalMinutes)}
-            </span>
-            <button
-              onClick={() => onToggleSection('__unassigned')}
-              className="text-stone-400 transition-colors hover:text-stone-600"
-            >
-              {collapsedSections.has('__unassigned') ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-            </button>
-          </div>
-          {!collapsedSections.has('__unassigned') && (
-            <div className="divide-y divide-stone-100">
-              {unassignedGroup.entries.map((entry) => (
-                <UnassignedEntryRow
-                  key={entry.id}
-                  entry={entry}
-                  items={items}
-                  selectedIds={selectedIds}
-                  onToggle={onToggle}
-                  flatIds={flatIds}
-                  focusedIndex={focusedIndex}
-                  onFocusIndex={onFocusIndex}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-1.5 text-sm text-green-700">
-          <CheckCircle2 size={14} />
-          All activity assigned to a matter.
-        </div>
-      )}
-
-      {/* Billable matter sections */}
-      {groups.map((group) => {
-        const key = group.matterId ?? '__no-matter';
-        const collapsed = collapsedSections.has(key);
-        return (
-          <MatterSection
-            key={key}
-            group={group}
-            collapsed={collapsed}
-            onToggleSection={() => onToggleSection(key)}
-            selectedIds={selectedIds}
-            onToggleItem={onToggle}
-            items={items}
-            flatIds={flatIds}
-            focusedIndex={focusedIndex}
-            onFocusIndex={onFocusIndex}
-            collapsedProviders={collapsedProviders}
-            onToggleProvider={onToggleProvider}
-            onToggleProviderAll={onToggleProviderAll}
-          />
-        );
-      })}
-
-      {/* Non-billable / internal section */}
-      {internalGroups.length > 0 && (
-        <div className="rounded-lg border border-stone-200 bg-stone-50">
-          <button
-            onClick={() => onToggleSection('__internal')}
-            className="flex w-full items-center gap-2 px-4 py-2.5"
-          >
-            {collapsedSections.has('__internal') ? <ChevronRight size={16} className="text-stone-400" /> : <ChevronDown size={16} className="text-stone-400" />}
-            <FolderOpen size={14} className="text-stone-400" />
-            <span className="text-sm font-medium text-stone-600">Non-billable / Internal</span>
-            <span className="text-xs text-stone-400">
-              {internalGroups.reduce((s, g) => s + g.totalMinutes, 0)} min
-            </span>
-          </button>
-          {!collapsedSections.has('__internal') && (
-            <div className="border-t border-stone-200">
-              {internalGroups.map((group) => (
-                <MatterSection
-                  key={group.matterId}
-                  group={group}
-                  collapsed={false}
-                  onToggleSection={() => {}}
-                  selectedIds={selectedIds}
-                  onToggleItem={onToggle}
-                  items={items}
-                  flatIds={flatIds}
-                  focusedIndex={focusedIndex}
-                  onFocusIndex={onFocusIndex}
-                  collapsedProviders={collapsedProviders}
-                  onToggleProvider={onToggleProvider}
-                  onToggleProviderAll={onToggleProviderAll}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Ignored section — always collapsed */}
-      <div className="rounded-lg border border-stone-200 bg-stone-50">
-        <button
-          onClick={() => onToggleSection('__ignored')}
-          className="flex w-full items-center gap-2 px-4 py-2.5"
-        >
-          {collapsedSections.has('__ignored') ? <ChevronRight size={16} className="text-stone-400" /> : <ChevronDown size={16} className="text-stone-400" />}
-          <Inbox size={14} className="text-stone-400" />
-          <span className="text-sm font-medium text-stone-500">Ignored</span>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function MatterSection({
-  group,
-  collapsed,
-  onToggleSection,
-  selectedIds,
-  onToggleItem,
-  items,
-  flatIds,
-  focusedIndex,
-  onFocusIndex,
-  collapsedProviders,
-  onToggleProvider,
-  onToggleProviderAll,
-}: {
-  group: MatterGroup;
-  collapsed: boolean;
-  onToggleSection: () => void;
-  selectedIds: Set<string>;
-  onToggleItem: (id: string) => void;
-  items: ActivityItem[];
-  flatIds: string[];
-  focusedIndex: number | null;
-  onFocusIndex: (i: number | null) => void;
-  collapsedProviders: Set<Provider>;
-  onToggleProvider: (p: Provider) => void;
-  onToggleProviderAll: (p: Provider, select: boolean) => void;
-}) {
-  const matter = group.matter;
-  const allSourceIds = group.entries.flatMap((e) => e.sourceItemIds);
-  const sectionItems = items.filter((i) => allSourceIds.includes(i.id));
-
-  return (
-    <div className="card overflow-hidden">
-      {/* Header */}
-      <button
-        onClick={onToggleSection}
-        className="flex w-full items-center gap-2 border-b border-stone-200 bg-stone-50 px-4 py-2.5"
-      >
-        {collapsed ? <ChevronRight size={16} className="text-stone-400" /> : <ChevronDown size={16} className="text-stone-400" />}
-        <span className="text-sm font-semibold text-stone-800">
-          {matter?.case_id_visible ?? matter?.name ?? group.label}
-        </span>
-        {matter && (
-          <span className="text-xs text-stone-500">
-            {matter.name}
-          </span>
-        )}
-        <span className="ml-auto text-sm font-medium text-stone-700">
-          {formatHours(group.totalMinutes)}
-        </span>
-      </button>
-
-      {/* Items */}
-      {!collapsed && sectionItems.length > 0 && (
-        <ActivityList
-          items={sectionItems}
-          selectedIds={selectedIds}
-          onToggle={onToggleItem}
-          collapsedSections={collapsedProviders}
-          onToggleSection={onToggleProvider}
-          onToggleProviderAll={onToggleProviderAll}
-          focusedIndex={focusedIndex}
-          onFocusIndex={onFocusIndex}
-          flatIds={flatIds}
-        />
-      )}
-    </div>
-  );
-}
-
-function UnassignedEntryRow({
-  entry,
-  items,
-  selectedIds,
-  onToggle,
-  flatIds,
-  focusedIndex,
-  onFocusIndex,
-}: {
-  entry: AttributedEntry;
-  items: ActivityItem[];
-  selectedIds: Set<string>;
-  onToggle: (id: string) => void;
-  flatIds: string[];
-  focusedIndex: number | null;
-  onFocusIndex: (i: number | null) => void;
-}) {
-  const entryItems = items.filter((i) => entry.sourceItemIds.includes(i.id));
-  return (
-    <div className="rounded-md bg-white/60 px-2 py-1.5">
-      <div className="flex items-center gap-2 text-xs text-stone-600">
-        <span className="font-medium">{formatMinutes(entry.roundedMinutes)}</span>
-        <span className="text-stone-400">·</span>
-        <span>{entry.label}</span>
-        <span className="ml-auto text-stone-400">{entry.attribution.reason}</span>
-      </div>
-      {entryItems.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1">
-          {entryItems.map((item) => {
-            const selected = selectedIds.has(item.id);
-            return (
-              <button
-                key={item.id}
-                onClick={() => onToggle(item.id)}
-                className={`rounded px-1.5 py-0.5 text-xs ${
-                  selected ? 'bg-stone-200 text-stone-700' : 'text-stone-400 hover:bg-stone-100'
-                }`}
-              >
-                {item.summary}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
