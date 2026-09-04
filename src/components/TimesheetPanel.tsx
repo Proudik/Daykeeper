@@ -321,7 +321,7 @@ export function TimesheetPanel({
           />
         )}
 
-        {/* Drop zone only when no entries have been generated yet */}
+        {/* Full drop zone when no entries yet */}
         {!generating && generationErrors.length === 0 && !expandedEntry && entries.length === 0 && (
           <div
             onDragOver={(event) => {
@@ -344,6 +344,29 @@ export function TimesheetPanel({
             }}
           >
             <EmptyState hasAssigned={hasAssignedSessions} dropActive={emptyDropActive} />
+          </div>
+        )}
+        {/* Compact drop zone when entries already exist */}
+        {!generating && generationErrors.length === 0 && !expandedEntry && entries.length > 0 && onDropToEmpty && (
+          <div
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+              setEmptyDropActive(true);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setEmptyDropActive(false);
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const itemId = event.dataTransfer.getData('text/daykeeper-item');
+              setEmptyDropActive(false);
+              if (itemId) onDropToEmpty(itemId);
+            }}
+          >
+            <CompactDropZone dropActive={emptyDropActive} />
           </div>
         )}
       </div>
@@ -627,6 +650,22 @@ function EmptyState({
           Assign activity to matters on the left, or drag a signal here to pick a matter.
         </p>
       )}
+    </div>
+  );
+}
+
+function CompactDropZone({ dropActive }: { dropActive: boolean }) {
+  const borderClass = dropActive
+    ? 'border-accent-400 bg-accent-50/60'
+    : 'border-stone-200 bg-stone-50/50';
+  return (
+    <div
+      className={`flex items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-center transition-all duration-200 ${borderClass}`}
+    >
+      <Briefcase size={14} className={dropActive ? 'text-accent-600' : 'text-stone-300'} />
+      <p className="text-xs text-stone-400">
+        {dropActive ? 'Drop to pick a matter' : 'Drag another signal here to assign it'}
+      </p>
     </div>
   );
 }
