@@ -35,6 +35,7 @@ import { MatterPicker } from '@/components/MatterPicker';
 import { AssignmentTray } from '@/components/AssignmentTray';
 import { ReviewCardList } from '@/components/ReviewCardList';
 import { ActivityList } from '@/components/ActivityList';
+import { CalendarBoard } from '@/components/CalendarBoard';
 import { VerticalTimeline } from '@/components/VerticalTimeline';
 import { TimesheetPanel } from '@/components/TimesheetPanel';
 import { ManualEntryForm } from '@/components/ManualEntryForm';
@@ -61,7 +62,7 @@ interface DayViewProps {
   onDateChange: (d: string) => void;
 }
 
-type GroupMode = 'matter' | 'app' | 'review';
+type GroupMode = 'matter' | 'app' | 'review' | 'board';
 
 // Vibrant, distinct color palette for matters (up to 12 per day)
 const MATTER_PALETTE = [
@@ -141,6 +142,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const autoGenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastDropMatterId, setLastDropMatterId] = useState<string | null>(null);
   const [pendingDropItemId, setPendingDropItemId] = useState<string | null>(null);
+  const [hoveredEntryItemIds, setHoveredEntryItemIds] = useState<Set<string>>(new Set());
   const [generationRevision, setGenerationRevision] = useState(0);
   const [mobileTab, setMobileTab] = useState<'signals' | 'timesheet'>('signals');
   const [isMobile, setIsMobile] = useState(false);
@@ -1002,6 +1004,12 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             >
               Review
             </button>
+            <button
+              onClick={() => setGroupMode('board')}
+              className={`rounded px-2 py-1 text-xs font-medium ${groupMode === 'board' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}
+            >
+              Board
+            </button>
           </div>
           </div>
         </div>
@@ -1192,6 +1200,33 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                 setManualOverrides((prev) => { const next = new Map(prev); next.delete(itemId); return next; });
               }}
             />
+          ) : groupMode === 'board' ? (
+            <CalendarBoard
+              items={visibleSelectedItems}
+              matters={matters}
+              timezone={profile?.timezone}
+              workStart={workStart}
+              workEnd={workEnd}
+              usedItemIds={usedItemIds}
+              generatedItemIds={generatedItemIds}
+              highlightedItemIds={hoveredEntryItemIds}
+              recentMatterIds={recentMatterIds}
+              onAssign={(itemId, matterId) => {
+                setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
+                setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, matterId); return next; });
+              }}
+              onDropGroup={(itemIds, matterId) => {
+                setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
+                setManualOverrides((prev) => {
+                  const next = new Map(prev);
+                  for (const id of itemIds) next.set(id, matterId);
+                  return next;
+                });
+              }}
+              onHoverEntry={(itemIds) => {
+                setHoveredEntryItemIds(itemIds ? new Set(itemIds) : new Set());
+              }}
+            />
           ) : groupMode === 'matter' ? (
             <div className="flex gap-3">
               <div className="min-w-0 flex-1">
@@ -1298,6 +1333,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             onDropToEmpty={(itemId) => setPendingDropItemId(itemId)}
             hasAssignedSessions={hasAssignedSessions}
             lastDropMatterId={lastDropMatterId}
+            onHoverEntry={(itemIds) => setHoveredEntryItemIds(itemIds ? new Set(itemIds) : new Set())}
           />
           {pendingDropSession && pendingDropItemId && (
             <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/20 sm:right-5 sm:top-5 sm:inset-auto sm:items-start sm:justify-start">

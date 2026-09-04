@@ -33,6 +33,7 @@ interface TimesheetPanelProps {
   onRegenerate: () => void;
   onDropSignal: (itemId: string, matterId: string) => void;
   onDropToEmpty?: (itemId: string) => void;
+  onHoverEntry?: (itemIds: string[] | null) => void;
   hasAssignedSessions: boolean;
   lastDropMatterId: string | null;
 }
@@ -59,6 +60,7 @@ export function TimesheetPanel({
   onRegenerate,
   onDropSignal,
   onDropToEmpty,
+  onHoverEntry,
   hasAssignedSessions,
   lastDropMatterId,
 }: TimesheetPanelProps) {
@@ -278,6 +280,8 @@ export function TimesheetPanel({
                         <div
                           key={entry.id}
                           style={{ animation: `fadeInUp 0.3s ease-out ${i * 60}ms both` }}
+                          onMouseEnter={() => onHoverEntry?.(entry.sourceItemIds ?? null)}
+                          onMouseLeave={() => onHoverEntry?.(null)}
                         >
                           <EntryRow
                             entry={entry}
