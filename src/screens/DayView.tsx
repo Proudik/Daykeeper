@@ -1233,12 +1233,19 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                 setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, matterId); return next; });
               }}
               onDropGroup={(itemIds, matterId) => {
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  for (const id of itemIds) next.add(id);
+                  return next;
+                });
                 setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
                 setManualOverrides((prev) => {
                   const next = new Map(prev);
                   for (const id of itemIds) next.set(id, matterId);
                   return next;
                 });
+                setLastDropMatterId(matterId);
+                setGenerationRevision((r) => r + 1);
               }}
               onHoverEntry={(itemIds) => {
                 setHoveredEntryItemIds(itemIds ? new Set(itemIds) : new Set());
