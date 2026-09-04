@@ -170,17 +170,21 @@ interface PlacedBlock {
 }
 
 function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]): { lane: number; laneCount: number }[] {
-  const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+  const sorted = blocks
+    .map((block, index) => ({ ...block, index }))
+    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
   const laneEnds: number[] = [];
-  const result: { lane: number; laneCount: number }[] = [];
+  const result = blocks.map(() => ({ lane: 0, laneCount: 0 }));
+
   for (const block of sorted) {
     let lane = laneEnds.findIndex((end) => end <= block.startMin);
     if (lane === -1) lane = laneEnds.length;
     laneEnds[lane] = block.endMin;
-    result.push({ lane, laneCount: 0 });
+    result[block.index] = { lane, laneCount: 0 };
   }
+
   const laneCount = Math.max(laneEnds.length, 1);
-  return result.map((r) => ({ ...r, laneCount }));
+  return result.map((assignment) => ({ ...assignment, laneCount }));
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -397,7 +401,7 @@ export function CalendarBoard({
     const isPreviewHighlighted = highlightedItemIds.size > 0 && block.itemIds.some((id) => highlightedItemIds.has(id));
     const isPreviewDimmed = highlightedItemIds.size > 0 && !isPreviewHighlighted;
     const isHovered = hoveredBlock === block.key;
-    const width = Math.max(60, 100 / block.laneCount - 3);
+    const width = Math.max(24, 100 / block.laneCount - 3);
     const left = (block.lane * 100) / block.laneCount + 1.5;
 
     return (
