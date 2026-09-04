@@ -36,8 +36,8 @@ interface TimesheetPanelProps {
   saveSuccess: boolean;
   onSave: (entries: DraftTimesheetEntry[]) => void;
   onRegenerate: () => void;
-  onDropSignal: (itemId: string, matterId: string) => void;
-  onDropToEmpty?: (itemId: string) => void;
+  onDropSignal: (itemIds: string[], matterId: string) => void;
+  onDropToEmpty?: (itemIds: string[]) => void;
   onHoverEntry?: (itemIds: string[] | null) => void;
   hasAssignedSessions: boolean;
   lastDropMatterId: string | null;
@@ -121,12 +121,24 @@ export function TimesheetPanel({
     onEntriesChange(entries.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   }
 
+  function extractDraggedItems(event: DragEvent<HTMLDivElement>): string[] {
+    const payload = event.dataTransfer.getData('text/daykeeper-items');
+    if (payload) {
+      try {
+        const ids = JSON.parse(payload);
+        if (Array.isArray(ids) && ids.length > 0) return ids;
+      } catch { /* fall through */ }
+    }
+    const single = event.dataTransfer.getData('text/daykeeper-item');
+    return single ? [single] : [];
+  }
+
   function handleMatterDrop(event: DragEvent<HTMLDivElement>, matterId: string) {
     event.preventDefault();
     event.stopPropagation();
-    const itemId = event.dataTransfer.getData('text/daykeeper-item');
+    const itemIds = extractDraggedItems(event);
     setDropTarget(null);
-    if (itemId) onDropSignal(itemId, matterId);
+    if (itemIds.length > 0) onDropSignal(itemIds, matterId);
   }
 
   function copyAll() {
@@ -338,9 +350,9 @@ export function TimesheetPanel({
             onDrop={(event) => {
               if (!onDropToEmpty) return;
               event.preventDefault();
-              const itemId = event.dataTransfer.getData('text/daykeeper-item');
+              const itemIds = extractDraggedItems(event);
               setEmptyDropActive(false);
-              if (itemId) onDropToEmpty(itemId);
+              if (itemIds.length > 0) onDropToEmpty(itemIds);
             }}
           >
             <EmptyState hasAssigned={hasAssignedSessions} dropActive={emptyDropActive} />
@@ -362,9 +374,9 @@ export function TimesheetPanel({
             }}
             onDrop={(event) => {
               event.preventDefault();
-              const itemId = event.dataTransfer.getData('text/daykeeper-item');
+              const itemIds = extractDraggedItems(event);
               setEmptyDropActive(false);
-              if (itemId) onDropToEmpty(itemId);
+              if (itemIds.length > 0) onDropToEmpty(itemIds);
             }}
           >
             <CompactDropZone dropActive={emptyDropActive} />

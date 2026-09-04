@@ -1204,13 +1204,39 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             saveSuccess={saveSuccess}
             onSave={handleSave}
             onRegenerate={handleGenerate}
-            onDropSignal={handlePreviewDrop}
-            onDropToEmpty={(itemId) => {
-              const existingMatter = mergedOverrides.get(itemId);
+            onDropSignal={(itemIds, matterId) => {
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                for (const id of itemIds) next.add(id);
+                return next;
+              });
+              setGenerationRevision((revision) => revision + 1);
+              setLastDropMatterId(matterId);
+              setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
+              setManualOverrides((prev) => {
+                const next = new Map(prev);
+                for (const id of itemIds) next.set(id, matterId);
+                return next;
+              });
+            }}
+            onDropToEmpty={(itemIds) => {
+              const existingMatter = itemIds.map((id) => mergedOverrides.get(id)).find((v) => v !== undefined && v !== null);
               if (existingMatter) {
-                handlePreviewDrop(itemId, existingMatter);
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  for (const id of itemIds) next.add(id);
+                  return next;
+                });
+                setGenerationRevision((revision) => revision + 1);
+                setLastDropMatterId(existingMatter);
+                setRecentMatterIds((prev) => [existingMatter, ...prev.filter((id) => id !== existingMatter)].slice(0, 10));
+                setManualOverrides((prev) => {
+                  const next = new Map(prev);
+                  for (const id of itemIds) next.set(id, existingMatter);
+                  return next;
+                });
               } else {
-                setPendingDropItemId(itemId);
+                setPendingDropItemId(itemIds[0]);
               }
             }}
             hasAssignedSessions={hasAssignedSessions}
