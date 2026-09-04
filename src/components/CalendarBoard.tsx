@@ -421,41 +421,39 @@ export function CalendarBoard({
         onMouseLeave={() => {
           setHoveredBlock(null);
         }}
-        className={`group absolute z-10 cursor-grab rounded-md border text-left transition-all duration-150 ${
+        className={`group absolute z-10 cursor-grab rounded-md border border-stone-400 bg-stone-50 text-left transition-all duration-150 ${
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
-        } ${isHovered ? 'z-30 overflow-visible shadow-md' : 'overflow-hidden'}`}
+        } ${isHovered ? 'z-30 overflow-visible bg-white shadow-md' : 'overflow-hidden'}`}
         style={{
           top: topPx,
           height: isHovered ? 'auto' : heightPx,
           minHeight: heightPx,
           left: `${left}%`,
           width: `${isHovered ? expandedWidth : width}%`,
-          borderColor: block.color,
-          backgroundColor: isHovered ? '#ffffff' : block.isInTimesheet ? `${block.color}55` : `${block.color}18`,
         }}
       >
-        <div className="relative min-h-full border-l-[3px] px-1.5 py-1" style={{ borderColor: block.color }}>
+        <div className="relative min-h-full min-w-0 px-1.5 py-1">
           {heightPx >= 20 && (
-            <p className={`text-[10px] font-medium leading-tight text-stone-700 ${isHovered ? 'break-words' : 'truncate'}`}>
+            <p className="break-words text-[10px] font-medium leading-tight text-stone-700">
               {block.label}
             </p>
           )}
           {heightPx >= 34 && (
-            <p className={`text-[9px] leading-tight text-stone-500 ${isHovered ? 'break-words' : 'truncate'}`}>
+            <p className="break-words text-[9px] leading-tight text-stone-500">
               {block.subLabel}
             </p>
           )}
           {block.isAggregate && heightPx >= 40 && (
-            <span className="mt-0.5 inline-block rounded bg-stone-200/70 px-1 text-[8px] font-semibold text-stone-600">
+            <span className="mt-0.5 inline-block max-w-full break-words rounded bg-stone-200/70 px-1 text-[8px] font-semibold text-stone-600">
               {block.itemIds.length} signals
             </span>
           )}
           {matter && matterColor && (
-            <div className="mt-0.5 flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm" style={{ backgroundColor: matterColor }}>
-              <Briefcase size={7} className="shrink-0" />
-              <span className={isHovered ? 'break-words' : 'truncate'}>{matter.name}</span>
+            <div className="mt-0.5 flex max-w-full items-start gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm" style={{ backgroundColor: matterColor }}>
+              <Briefcase size={7} className="mt-0.5 shrink-0" />
+              <span className="min-w-0 break-words">{matter.name}</span>
             </div>
           )}
           {block.isUsed && (
