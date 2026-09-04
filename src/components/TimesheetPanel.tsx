@@ -321,10 +321,9 @@ export function TimesheetPanel({
           />
         )}
 
-        {/* Persistent drop zone for unassigned signals */}
-        {!generating && generationErrors.length === 0 && !expandedEntry && (
+        {/* Drop zone only when no entries have been generated yet */}
+        {!generating && generationErrors.length === 0 && !expandedEntry && entries.length === 0 && (
           <div
-            className="mb-2"
             onDragOver={(event) => {
               if (!onDropToEmpty) return;
               event.preventDefault();
@@ -344,7 +343,7 @@ export function TimesheetPanel({
               if (itemId) onDropToEmpty(itemId);
             }}
           >
-            <EmptyState hasAssigned={hasAssignedSessions} dropActive={emptyDropActive} compact={entries.length > 0} />
+            <EmptyState hasAssigned={hasAssignedSessions} dropActive={emptyDropActive} />
           </div>
         )}
       </div>
@@ -599,30 +598,15 @@ function GeneratingMessage() {
 function EmptyState({
   hasAssigned,
   dropActive,
-  compact = false,
 }: {
   hasAssigned: boolean;
   dropActive: boolean;
-  compact?: boolean;
 }) {
   const borderClass = dropActive
     ? 'border-accent-400 bg-accent-50/60 scale-[1.02]'
     : 'border-stone-200 bg-stone-50/50';
   const iconBgClass = dropActive ? 'bg-accent-100' : 'bg-stone-100';
   const iconColorClass = dropActive ? 'text-accent-600' : 'text-stone-300';
-
-  if (compact) {
-    return (
-      <div
-        className={`flex items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-4 text-center transition-all duration-200 ${borderClass}`}
-      >
-        <Briefcase size={16} className={iconColorClass} />
-        <p className="text-xs text-stone-400">
-          {dropActive ? 'Drop to pick a matter' : 'Drag another signal here to assign it'}
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div

@@ -445,11 +445,15 @@ export function CalendarBoard({
             if (!matterId) return null;
             const matter = matters.find((m) => m.id === matterId);
             if (!matter) return null;
+            const matterColor = MATTER_PALETTE[matters.indexOf(matter) % MATTER_PALETTE.length];
             return (
-              <span className="mt-0.5 inline-flex items-center gap-0.5 rounded bg-blue-600/90 px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm">
+              <div
+                className="mt-0.5 flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm"
+                style={{ backgroundColor: matterColor }}
+              >
                 <Briefcase size={7} className="shrink-0" />
                 <span className="truncate">{matter.case_id_visible ?? matter.name}</span>
-              </span>
+              </div>
             );
           })()}
           {block.isUsed && (
