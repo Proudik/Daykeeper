@@ -847,6 +847,26 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignedSessionSignature, generationRevision]);
 
+  function assignWholeMatter(matterId: string) {
+    const caseItemIds = displayItems
+      .filter((i) => i.meta.caseId === matterId || manualOverrides.get(i.id) === matterId)
+      .map((i) => i.id);
+    const targetIds = caseItemIds.length > 0 ? caseItemIds : displayItems.map((i) => i.id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of targetIds) next.add(id);
+      return next;
+    });
+    setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
+    setManualOverrides((prev) => {
+      const next = new Map(prev);
+      for (const id of targetIds) next.set(id, matterId);
+      return next;
+    });
+    setLastDropMatterId(matterId);
+    setGenerationRevision((r) => r + 1);
+  }
+
   return (
     <div className="flex h-full flex-col view-transition">
       {/* Running totals bar */}
@@ -1131,7 +1151,15 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             onSave={handleSave}
             onRegenerate={handleGenerate}
             onDropSignal={handlePreviewDrop}
-            onDropToEmpty={(itemId) => setPendingDropItemId(itemId)}
+            onDropToEmpty={(itemId) => {
+              const existingMatter = manualOverrides.get(itemId);
+              if (existingMatter) {
+                handlePreviewDrop(itemId, existingMatter);
+              } else {
+                setPendingDropItemId(itemId);
+              }
+            }}
+            onDropMatter={assignWholeMatter}
             hasAssignedSessions={hasAssignedSessions}
             lastDropMatterId={lastDropMatterId}
             onHoverEntry={(itemIds) => setHoveredEntryItemIds(itemIds ? new Set(itemIds) : new Set())}
@@ -1261,7 +1289,7 @@ function RecentCasesBar({
           Recent Cases
         </span>
         <span className="text-[10px] text-stone-400">
-          Drag signals here to assign & generate timesheet
+          Drag signals onto a case, or drag a case into the timesheet
         </span>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -1270,6 +1298,11 @@ function RecentCasesBar({
           return (
             <div
               key={matter.id}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/daykeeper-matter', matter.id);
+                e.dataTransfer.effectAllowed = 'copy';
+              }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
@@ -1277,7 +1310,7 @@ function RecentCasesBar({
               }}
               onDragLeave={() => setDragOverMatter(null)}
               onDrop={(e) => handleDrop(e, matter.id)}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-all duration-150 ${
+              className={`flex cursor-grab items-center gap-2 rounded-lg border px-3 py-2 transition-all duration-150 ${
                 isDropTarget
                   ? 'border-accent-400 bg-accent-50 ring-2 ring-accent-300'
                   : 'border-stone-200 bg-stone-50 hover:border-stone-300 hover:bg-stone-100'

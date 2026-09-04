@@ -16,6 +16,7 @@ import {
   Globe,
   Layers,
   CheckCircle2,
+  Briefcase,
 } from 'lucide-react';
 
 // ── Column definitions ────────────────────────────────────────────────────
@@ -430,8 +431,9 @@ export function CalendarBoard({
             const matter = matters.find((m) => m.id === matterId);
             if (!matter) return null;
             return (
-              <span className="mt-0.5 inline-block max-w-full truncate rounded bg-blue-100/80 px-1 text-[8px] font-semibold text-blue-700">
-                {matter.case_id_visible ?? matter.name}
+              <span className="mt-0.5 inline-flex items-center gap-0.5 rounded bg-blue-600/90 px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm">
+                <Briefcase size={7} className="shrink-0" />
+                <span className="truncate">{matter.case_id_visible ?? matter.name}</span>
               </span>
             );
           })()}
