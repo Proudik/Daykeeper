@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import type { Matter, MatterRuleType } from '@/types';
 import type { ScoredCandidate } from '@/lib/attribution/scoring-resolver';
-import { getClientName, getMatterPath } from '@/lib/attribution/resolver-data';
+import { getClientName } from '@/lib/attribution/resolver-data';
 import { Search, Briefcase, EyeOff, Check, Tag } from 'lucide-react';
 
 export interface MatterPickerProps {
@@ -226,8 +226,6 @@ export function MatterPicker({
               {row.kind === 'matter' && (
                 <MatterRow
                   matter={row.matter}
-                  matters={matters}
-                  clients={clients}
                   isCurrent={row.matter.id === currentMatterId}
                   isClosed={!row.matter.state_is_open}
                   isActive={isActive}
@@ -330,21 +328,14 @@ function CandidateRow({
       }`}
     >
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-stone-800">
-            {candidate.matter.name}
+        <span className="block truncate text-sm font-medium text-stone-800">
+          {candidate.matter.name}
+        </span>
+        {candidate.matter.case_id_visible && (
+          <span className="block truncate font-mono text-[11px] text-stone-400">
+            {candidate.matter.case_id_visible}
           </span>
-          {candidate.matter.case_id_visible && (
-            <span className="shrink-0 font-mono text-[11px] text-stone-400">
-              {candidate.matter.case_id_visible}
-            </span>
-          )}
-          {isCurrent && (
-            <span className="ml-auto shrink-0 flex items-center gap-1 text-[11px] text-green-600">
-              <Check size={11} /> current
-            </span>
-          )}
-        </div>
+        )}
         {client && (
           <p className="truncate text-xs text-stone-400 mt-0.5">{client}</p>
         )}
@@ -368,8 +359,6 @@ function CandidateRow({
 
 function MatterRow({
   matter,
-  matters,
-  clients,
   isCurrent,
   isClosed,
   isActive,
@@ -377,15 +366,12 @@ function MatterRow({
   onClick,
 }: {
   matter: Matter;
-  matters: Matter[];
-  clients: { id: string; name: string }[];
   isCurrent: boolean;
   isClosed: boolean;
   isActive: boolean;
   onHover: () => void;
   onClick: () => void;
 }) {
-  const path = getMatterPath(matter, matters, clients);
   return (
     <button
       onClick={onClick}
@@ -395,23 +381,18 @@ function MatterRow({
       }`}
     >
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className={`truncate text-sm font-medium ${isClosed ? 'text-stone-400' : 'text-stone-800'}`}>
-            {matter.name}
+        <span className={`block truncate text-sm font-medium ${isClosed ? 'text-stone-400' : 'text-stone-800'}`}>
+          {matter.name}
+        </span>
+        {matter.case_id_visible && (
+          <span className="block truncate font-mono text-[11px] text-stone-400">
+            {matter.case_id_visible}
           </span>
-          {matter.case_id_visible && (
-            <span className="shrink-0 font-mono text-[11px] text-stone-400">
-              {matter.case_id_visible}
-            </span>
-          )}
-          {isCurrent && (
-            <span className="ml-auto shrink-0 flex items-center gap-1 text-[11px] text-green-600">
-              <Check size={11} /> current
-            </span>
-          )}
-        </div>
-        {path && path !== matter.name && (
-          <p className="truncate text-xs text-stone-400 mt-0.5">{path}</p>
+        )}
+        {isCurrent && (
+          <span className="mt-0.5 flex items-center gap-1 text-[11px] text-green-600">
+            <Check size={11} /> current
+          </span>
         )}
       </div>
     </button>

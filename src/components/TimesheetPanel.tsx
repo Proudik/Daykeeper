@@ -174,7 +174,7 @@ export function TimesheetPanel({
   }, [expandedEntryId]);
 
   return (
-    <div data-timesheet-panel className={`absolute inset-y-3 right-3 z-20 flex flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30 transition-[width] duration-300 ease-out ${expandedEntry ? 'w-[min(68vw,950px)]' : 'w-[calc(100%-12px)]'}`}>
+    <div data-timesheet-panel className={`absolute inset-y-3 right-3 z-20 flex flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30 transition-[width] duration-300 ease-out ${expandedEntry ? 'w-[min(68vw,950px)]' : 'w-[calc(100%-12px)]'}`}>
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
         <div className="flex items-center justify-between">

@@ -1365,9 +1365,11 @@ function RecentCasesBar({
               />
               <div className="min-w-0">
                 <p className="truncate text-xs font-semibold text-stone-700">
-                  {matter.case_id_visible ?? matter.name}
+                  {matter.name}
                 </p>
-                <p className="truncate text-[10px] text-stone-400">{matter.name}</p>
+                {matter.case_id_visible && (
+                  <p className="truncate font-mono text-[10px] text-stone-400">{matter.case_id_visible}</p>
+                )}
               </div>
             </div>
           );
