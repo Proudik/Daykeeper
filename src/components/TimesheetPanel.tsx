@@ -3,6 +3,7 @@ import type { DragEvent } from 'react';
 import type { ActivityItem, DraftTimesheetEntry, Matter } from '@/types';
 import type { EstimateResult } from '@/lib/estimator';
 import { formatMinutes, formatHours } from '@/lib/time';
+import { providerColors } from '@/components/TimelineStrip';
 import {
   Briefcase,
   Clock,
@@ -573,13 +574,14 @@ function EntryEditorPanel({
               {sourceItems.map((item) => {
                 const Icon = item.provider === 'calendar' ? CalendarDays : item.provider === 'browser' ? Globe : MousePointer2;
                 const context = signalContexts[item.id] ?? '';
+                const sourceColor = providerColors[item.provider] ?? '#78716c';
                 return (
-                  <div key={item.id} className="rounded-lg border border-stone-100 bg-stone-50/50 p-2.5">
+                  <div key={item.id} className="rounded-lg border bg-white p-2.5" style={{ borderColor: `${sourceColor}30`, backgroundColor: `${sourceColor}08` }}>
                     <div className="flex items-start gap-2">
-                      <Icon size={12} className="mt-0.5 shrink-0 text-stone-400" />
+                      <Icon size={12} className="mt-0.5 shrink-0" style={{ color: sourceColor }} />
                       <div className="min-w-0 flex-1">
                         <p className="text-[11px] font-medium text-stone-700">{item.summary}</p>
-                        <p className="mt-0.5 text-[9px] text-stone-400">
+                        <p className="mt-0.5 text-[9px]" style={{ color: sourceColor }}>
                           {item.provider} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           {item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}
                         </p>
