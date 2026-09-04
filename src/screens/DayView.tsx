@@ -558,6 +558,10 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const resolvedSessions = useMemo<ResolvedSession[]>(() => {
     if (visibleSelectedItems.length === 0) return [];
     try {
+      const protectedItemIds = new Set<string>();
+      for (const [itemId, matterId] of manualOverrides) {
+        if (matterId) protectedItemIds.add(itemId);
+      }
       const estResult = estimate(visibleSelectedItems, {
         timezone: profile?.timezone ?? 'Europe/Prague',
         workStart,
@@ -565,6 +569,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         rounding,
         targetHours,
         exclusionRules: [],
+        protectedItemIds,
       });
       let raw: ResolvedSession[];
       if (scProviderData) {
@@ -692,6 +697,10 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     setGenerating(true);
     try {
       // Run estimator to get sessions for the resolver
+      const protectedItemIds = new Set<string>();
+      for (const [itemId, matterId] of manualOverrides) {
+        if (matterId) protectedItemIds.add(itemId);
+      }
       const estResult = estimate(generationItems, {
         timezone: profile?.timezone ?? 'Europe/Prague',
         workStart,
@@ -699,6 +708,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         rounding,
         targetHours,
         exclusionRules: [],
+        protectedItemIds,
       });
       let rawSessions: ResolvedSession[];
       if (scProviderData) {

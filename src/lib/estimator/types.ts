@@ -86,6 +86,10 @@ export interface EstimateOptions {
   rounding: RoundingMinutes;
   targetHours: number;
   exclusionRules: ExclusionRuleInput[];
+  // Item IDs the user has manually assigned to a matter. Sessions containing
+  // these items are never absorbed by the overlap resolver — the user's
+  // explicit assignment takes priority over automatic deduplication.
+  protectedItemIds?: Set<string>;
 }
 
 export interface ExclusionRuleInput {

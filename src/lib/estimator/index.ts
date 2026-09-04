@@ -21,7 +21,7 @@ export function estimate(
 ): EstimateResult {
   const normalized = normalize(items);
   const sessions = cluster(normalized);
-  const resolved = resolveOverlaps(sessions);
+  const resolved = resolveOverlaps(sessions, options.protectedItemIds);
   const filtered = filterSessions(resolved, options.exclusionRules);
   const reconciliation = reconcile(filtered, options.targetHours * 60);
   const entries = roundSessions(filtered, options.rounding);

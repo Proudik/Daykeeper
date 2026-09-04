@@ -18,7 +18,7 @@ const PRIORITY: Record<Provider, number> = {
   custom: 0,
 };
 
-export function resolveOverlaps(sessions: WorkSession[]): WorkSession[] {
+export function resolveOverlaps(sessions: WorkSession[], protectedItemIds?: Set<string>): WorkSession[] {
   // Sort by priority (highest first), then by start time
   const sorted = [...sessions].sort((a, b) => {
     const pri = PRIORITY[b.provider] - PRIORITY[a.provider];
@@ -30,10 +30,22 @@ export function resolveOverlaps(sessions: WorkSession[]): WorkSession[] {
   const occupied: Interval[] = [];
   const result: WorkSession[] = [];
 
+  const isProtected = (session: WorkSession) =>
+    protectedItemIds && protectedItemIds.size > 0 &&
+    session.sourceItemIds.some((id) => protectedItemIds.has(id));
+
   for (const session of sorted) {
     const overlaps = findOverlaps(session, occupied);
 
     if (overlaps.length === 0) {
+      result.push(session);
+      addInterval(occupied, session.start, session.end);
+      continue;
+    }
+
+    // Protected sessions (manually assigned) are never absorbed — keep them
+    // even if they overlap a higher-priority session. Both sessions bill.
+    if (isProtected(session)) {
       result.push(session);
       addInterval(occupied, session.start, session.end);
       continue;
