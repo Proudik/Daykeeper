@@ -228,6 +228,7 @@ export function CalendarBoard({
 }: CalendarBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoveredBlock, setHoveredBlock] = useState<string | null>(null);
+  const [hoverPosition, setHoverPosition] = useState<{ top: number; left: number } | null>(null);
   const [hourPx, setHourPx] = useState(DEFAULT_HOUR_PX);
   const scrollRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -408,7 +409,6 @@ export function CalendarBoard({
     const matter = matterId ? matters.find((m) => m.id === matterId) : null;
     const matterColor = matter ? MATTER_PALETTE[matters.indexOf(matter) % MATTER_PALETTE.length] : null;
     const tooltipWidth = 240;
-    const tooltipLeft = Math.min(left, 100 - (tooltipWidth / (boardRef.current?.clientWidth || 600)) * 100 - 1);
 
     return (
       <div
@@ -416,11 +416,17 @@ export function CalendarBoard({
         draggable
         onDragStart={(e) => handleDragStart(e, block)}
         onDragEnd={handleDragEnd}
-        onMouseEnter={() => {
+        onMouseEnter={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
           setHoveredBlock(block.key);
+          setHoverPosition({
+            top: Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - 168)),
+            left: Math.max(8, Math.min(rect.left, window.innerWidth - tooltipWidth - 8)),
+          });
         }}
         onMouseLeave={() => {
           setHoveredBlock(null);
+          setHoverPosition(null);
         }}
         className={`group absolute z-10 cursor-grab overflow-visible rounded-md border text-left transition-shadow duration-150 ${
           isPreviewDimmed ? 'opacity-20' : ''
@@ -462,22 +468,27 @@ export function CalendarBoard({
             <CheckCircle2 size={10} className="absolute right-1 top-1 text-emerald-600" />
           )}
         </div>
-        {isHovered && (
+        {isHovered && hoverPosition && (
           <div
-            className="pointer-events-none absolute top-0 z-50 max-h-40 overflow-y-auto rounded-md border-2 bg-white px-3 py-2 shadow-xl"
+            className="pointer-events-none fixed z-[100] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border bg-white px-3 py-2.5 shadow-lg shadow-stone-900/15"
             style={{
-              left: `${tooltipLeft - left}%`,
-              width: `${tooltipWidth}px`,
-              borderColor: block.color,
+              top: hoverPosition.top,
+              left: hoverPosition.left,
+              width: `min(${tooltipWidth}px, calc(100vw - 16px))`,
+              borderColor: `${block.color}80`,
             }}
           >
-            <p className="break-words text-[13px] font-medium leading-snug text-stone-800">{block.label}</p>
+            <div className="mb-1.5 flex items-center gap-1.5 border-b border-stone-100 pb-1.5">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: block.color }} />
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-400">Signal details</span>
+            </div>
+            <p className="break-words text-[12px] font-semibold leading-snug text-stone-800">{block.label}</p>
             <p className="mt-1 text-[11px] leading-snug text-stone-500">{block.subLabel}</p>
             {block.isAggregate && (
-              <p className="mt-1 text-[10px] font-semibold text-stone-600">{block.itemIds.length} signals</p>
+              <p className="mt-1 text-[10px] font-medium text-stone-500">{block.itemIds.length} signals</p>
             )}
             {matter && matterColor && (
-              <div className="mt-1 flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold text-white" style={{ backgroundColor: matterColor }}>
+              <div className="mt-1.5 flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-white" style={{ backgroundColor: matterColor }}>
                 <Briefcase size={10} className="shrink-0" />
                 <span className="break-words">{matter.name}</span>
               </div>

@@ -451,10 +451,6 @@ function ExpandableEntryRow({
                 {entry.activityType}
               </span>
             )}
-            <span className="flex items-center gap-0.5 text-[10px] text-stone-400">
-              <Clock size={9} />
-              {entry.confirmedMinutes} min
-            </span>
             {!entry.billable && (
               <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[9px] text-stone-400">
                 Non-billable
