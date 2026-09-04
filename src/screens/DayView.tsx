@@ -1348,6 +1348,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         <div className={`relative w-full shrink-0 p-3 sm:w-[380px] ${mobileTab === 'timesheet' ? 'flex flex-col' : 'hidden'} sm:flex sm:flex-col`}>
           <TimesheetPanel
             entries={draftEntries ?? []}
+            items={displayItems}
             onEntriesChange={(e) => setDraftEntries(e)}
             matters={matters}
             estimate={estimateResult}

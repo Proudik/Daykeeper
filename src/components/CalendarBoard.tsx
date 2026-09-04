@@ -235,6 +235,7 @@ const MIN_DURATION_MIN = 15;
 const MIN_HOUR_PX = 28;
 const MAX_HOUR_PX = 240;
 const DEFAULT_HOUR_PX = 56;
+const CONNECTION_HEADER_OFFSET = 36;
 
 export function CalendarBoard({
   items,
@@ -404,8 +405,8 @@ export function CalendarBoard({
         const toCol = aCol < bCol ? bCol : aCol;
         // Only connect adjacent columns to avoid visual clutter
         if (toCol - fromCol > 1) continue;
-        const y1 = ((from.startMin + from.endMin) / 2 - displayStart) / 60 * hourPx;
-        const y2 = ((to.startMin + to.endMin) / 2 - displayStart) / 60 * hourPx;
+        const y1 = CONNECTION_HEADER_OFFSET + ((from.startMin + from.endMin) / 2 - displayStart) / 60 * hourPx;
+        const y2 = CONNECTION_HEADER_OFFSET + ((to.startMin + to.endMin) / 2 - displayStart) / 60 * hourPx;
         conns.push({
           fromKey: from.key,
           toKey: to.key,
@@ -691,17 +692,23 @@ export function CalendarBoard({
       if (!blkA || !blkB) return null;
       const colA = COL_INDEX[blkA.column];
       const colB = COL_INDEX[blkB.column];
-      const [fromBlk, toBlk, fromCol, toCol] = colA <= colB ? [blkA, blkB, colA, colB] : [blkB, blkA, colB, colA];
-      const y1 = ((fromBlk.startMin + fromBlk.endMin) / 2 - displayStart) / 60 * hourPx;
-      const y2 = ((toBlk.startMin + toBlk.endMin) / 2 - displayStart) / 60 * hourPx;
-      const x1 = GUTTER_W + fromCol * colWidth + colWidth - 2;
-      const x2 = GUTTER_W + toCol * colWidth + 2;
-      const midX = (x1 + x2) / 2;
+      const sameColumn = colA === colB;
+      const [fromBlk, toBlk, fromCol, toCol] = sameColumn
+        ? (blkA.startMin <= blkB.startMin ? [blkA, blkB, colA, colB] : [blkB, blkA, colB, colA])
+        : (colA < colB ? [blkA, blkB, colA, colB] : [blkB, blkA, colB, colA]);
+      const y1 = CONNECTION_HEADER_OFFSET + ((fromBlk.startMin + fromBlk.endMin) / 2 - displayStart) / 60 * hourPx;
+      const y2 = CONNECTION_HEADER_OFFSET + ((toBlk.startMin + toBlk.endMin) / 2 - displayStart) / 60 * hourPx;
+      const columnLeft = GUTTER_W + fromCol * colWidth;
+      const x1 = sameColumn ? columnLeft + colWidth - 8 : columnLeft + colWidth - 2;
+      const x2 = sameColumn ? x1 : GUTTER_W + toCol * colWidth + 2;
+      const midX = sameColumn ? x1 + 18 : (x1 + x2) / 2;
+      const curveY1 = sameColumn ? y1 : y1;
+      const curveY2 = sameColumn ? y2 : y2;
       const isHovered = hoveredConnections.size > 0 && (hoveredConnections.has(keyA) || hoveredConnections.has(keyB));
       return (
         <g key={`manual-${link}`}>
           <path
-            d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+            d={`M ${x1} ${curveY1} C ${midX} ${curveY1}, ${midX} ${curveY2}, ${x2} ${curveY2}`}
             fill="none"
             stroke={isHovered ? '#f59e0b' : '#2563eb'}
             strokeWidth={isHovered ? 2.5 : 2}

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { DragEvent } from 'react';
-import type { DraftTimesheetEntry, Matter, OutputLanguage, RoundingMinutes } from '@/types';
+import type { ActivityItem, DraftTimesheetEntry, Matter } from '@/types';
 import type { EstimateResult } from '@/lib/estimator';
 import { formatMinutes, formatHours } from '@/lib/time';
 import {
@@ -15,10 +15,17 @@ import {
   FileDown,
   ChevronDown,
   ChevronRight,
+  Maximize2,
+  X,
+  FileText,
+  Globe,
+  CalendarDays,
+  MousePointer2,
 } from 'lucide-react';
 
 interface TimesheetPanelProps {
   entries: DraftTimesheetEntry[];
+  items: ActivityItem[];
   onEntriesChange: (entries: DraftTimesheetEntry[]) => void;
   matters: Matter[];
   estimate: EstimateResult | null;
@@ -46,6 +53,7 @@ const MATTER_PALETTE = [
 
 export function TimesheetPanel({
   entries,
+  items,
   onEntriesChange,
   matters,
   estimate,
@@ -70,6 +78,8 @@ export function TimesheetPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [dropFlash, setDropFlash] = useState<string | null>(null);
   const [emptyDropActive, setEmptyDropActive] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [signalContexts, setSignalContexts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (lastDropMatterId) {
@@ -147,7 +157,7 @@ export function TimesheetPanel({
   }, [entries.length]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30">
+    <div className="relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30">
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
         <div className="flex items-center justify-between">
@@ -156,15 +166,30 @@ export function TimesheetPanel({
               <Sparkles size={15} className="text-accent-700" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-stone-800">Timesheet Preview</h3>
+              <button
+                onClick={() => entries.length > 0 && setInspectorOpen(true)}
+                disabled={entries.length === 0}
+                className="text-left transition-colors hover:text-accent-700 disabled:cursor-default"
+                title="Open detailed timesheet editor"
+              >
+                <h3 className="text-sm font-semibold text-stone-800">Timesheet Preview</h3>
               <p className="text-[11px] text-stone-400">
                 {hasAssignedSessions
                   ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} · ${formatMinutes(totalMinutes)}`
                   : 'Assign matters to generate'}
-              </p>
+                </p>
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => entries.length > 0 && setInspectorOpen(true)}
+              disabled={entries.length === 0}
+              className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-accent-700 disabled:opacity-30"
+              title="Open detailed editor"
+            >
+              <Maximize2 size={14} />
+            </button>
             <button
               onClick={copyAll}
               disabled={entries.length === 0}
@@ -370,6 +395,113 @@ export function TimesheetPanel({
           )}
         </div>
       )}
+      <div
+        className={`absolute right-0 top-0 z-40 flex h-full w-[min(620px,calc(100vw-24px))] flex-col rounded-2xl border border-stone-200 bg-white shadow-2xl shadow-stone-900/20 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          inspectorOpen ? 'translate-x-0' : 'translate-x-[calc(100%+24px)]'
+        }`}
+        aria-hidden={!inspectorOpen}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-stone-200 bg-stone-50/95 px-5 py-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-accent-700">Detailed editor</p>
+            <h2 className="mt-1 text-base font-semibold text-stone-900">Timesheet signals</h2>
+            <p className="mt-0.5 text-xs text-stone-500">Edit each entry and add context to its source signals.</p>
+          </div>
+          <button
+            onClick={() => setInspectorOpen(false)}
+            className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-white hover:text-stone-800"
+            title="Close detailed editor"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto bg-stone-50/60 p-4">
+          <div className="space-y-4">
+            {entries.map((entry, index) => {
+              const sourceItems = (entry.sourceItemIds ?? [])
+                .map((id) => items.find((item) => item.id === id))
+                .filter((item): item is ActivityItem => Boolean(item));
+              return (
+                <div key={entry.id} className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
+                  <div className="border-b border-stone-100 px-4 py-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">Entry {index + 1}</span>
+                      <label className="flex items-center gap-2 text-xs text-stone-500">
+                        <input
+                          type="checkbox"
+                          checked={entry.billable}
+                          onChange={(event) => updateEntry(entry.id, { billable: event.target.checked })}
+                          className="rounded accent-accent-600"
+                        />
+                        Billable
+                      </label>
+                    </div>
+                    <textarea
+                      value={entry.description}
+                      onChange={(event) => updateEntry(entry.id, { description: event.target.value })}
+                      rows={3}
+                      className="w-full resize-y rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm leading-relaxed text-stone-800 outline-none transition focus:border-accent-500 focus:bg-white focus:ring-2 focus:ring-accent-100"
+                      aria-label={`Edit entry ${index + 1} description`}
+                    />
+                    <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
+                      <Clock size={13} />
+                      <span>Minutes</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={entry.confirmedMinutes}
+                        onChange={(event) => updateEntry(entry.id, { confirmedMinutes: Math.max(0, Number(event.target.value) || 0) })}
+                        className="w-16 rounded-md border border-stone-200 px-2 py-1 text-center text-stone-700 outline-none focus:border-accent-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2 px-4 py-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-stone-600">
+                      <FileText size={13} className="text-accent-600" />
+                      Source signals
+                      <span className="font-normal text-stone-400">{sourceItems.length}</span>
+                    </div>
+                    {sourceItems.length === 0 ? (
+                      <p className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-400">No source details available.</p>
+                    ) : sourceItems.map((item) => {
+                      const Icon = item.provider === 'calendar' ? CalendarDays : item.provider === 'browser' ? Globe : MousePointer2;
+                      const context = signalContexts[item.id] ?? '';
+                      return (
+                        <div key={item.id} className="rounded-lg border border-stone-100 bg-stone-50/70 p-3">
+                          <div className="flex items-start gap-2">
+                            <Icon size={14} className="mt-0.5 shrink-0 text-stone-400" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-stone-700">{item.summary}</p>
+                              <p className="mt-0.5 text-[11px] text-stone-400">{item.provider} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}</p>
+                            </div>
+                          </div>
+                          <textarea
+                            value={context}
+                            onChange={(event) => {
+                              const nextContext = event.target.value;
+                              setSignalContexts((prev) => ({ ...prev, [item.id]: nextContext }));
+                              if (sourceItems.length === 1) {
+                                updateEntry(entry.id, { description: nextContext || entry.description });
+                              }
+                            }}
+                            placeholder="Add context for this signal..."
+                            rows={2}
+                            className="mt-2 w-full resize-y rounded-md border border-stone-200 bg-white px-2.5 py-2 text-xs text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
+                            aria-label={`Add context for ${item.summary}`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex shrink-0 justify-end border-t border-stone-200 bg-white px-5 py-3">
+          <button onClick={() => setInspectorOpen(false)} className="btn-primary text-sm">Done editing</button>
+        </div>
+      </div>
     </div>
   );
 }
