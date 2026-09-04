@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { DragEvent } from 'react';
+import { createPortal } from 'react-dom';
 import type { ActivityItem, DraftTimesheetEntry, Matter } from '@/types';
 import type { EstimateResult } from '@/lib/estimator';
 import { formatMinutes, formatHours } from '@/lib/time';
@@ -14,7 +15,6 @@ import {
   Sparkles,
   FileDown,
   Maximize2,
-  Minimize2,
   X,
   FileText,
   Globe,
@@ -140,14 +140,6 @@ export function TimesheetPanel({
     });
   }
 
-  function expandAll() {
-    setExpandedEntries(new Set(entries.map((e) => e.id)));
-  }
-
-  function collapseAll() {
-    setExpandedEntries(new Set());
-  }
-
   function updateEntry(id: string, patch: Partial<DraftTimesheetEntry>) {
     onEntriesChange(entries.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   }
@@ -184,25 +176,69 @@ export function TimesheetPanel({
     }
   }, [entries.length]);
 
-  const allExpanded = entries.length > 0 && expandedEntries.size === entries.length;
-
   return (
     <>
-      {isReviewMode && (
-        <button
-          type="button"
-          aria-label="Close focused timesheet preview"
-          onClick={() => setIsReviewMode(false)}
-          className="animate-fade-in fixed inset-0 z-40 cursor-default bg-stone-950/20 backdrop-blur-[1px]"
-        />
+      {isReviewMode && createPortal(
+        <>
+          <button
+            type="button"
+            aria-label="Close focused timesheet preview"
+            onClick={() => setIsReviewMode(false)}
+            className="animate-fade-in fixed inset-0 z-[100] cursor-default bg-stone-950/20 backdrop-blur-[1px]"
+          />
+          <div
+            className="animate-slide-in-right fixed inset-y-3 right-3 z-[101] flex max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-2xl shadow-stone-400/40"
+            style={{ width: 'min(78vw, 1080px)' }}
+          >
+            <ReviewPanelContent
+              entries={entries}
+              items={items}
+              matters={matters}
+              matterColorMap={matterColorMap}
+              matterGroups={matterGroups}
+              totalMinutes={totalMinutes}
+              totalBillableMinutes={totalBillableMinutes}
+              targetMinutes={targetMinutes}
+              progressPct={progressPct}
+              barColor={barColor}
+              existingRecordedMinutes={existingRecordedMinutes}
+              generating={generating}
+              generationErrors={generationErrors}
+              saving={saving}
+              saveError={saveError}
+              saveSuccess={saveSuccess}
+              expandedEntries={expandedEntries}
+              signalContexts={signalContexts}
+              dropFlash={dropFlash}
+              dropTarget={dropTarget}
+              emptyDropActive={emptyDropActive}
+              matterDropActive={matterDropActive}
+              hasAssignedSessions={hasAssignedSessions}
+              lastDropMatterId={lastDropMatterId}
+              onToggleEntry={toggleEntry}
+              onUpdateEntry={updateEntry}
+              onSetSignalContexts={setSignalContexts}
+              onSave={() => onSave(entries)}
+              onRegenerate={onRegenerate}
+              onClose={() => setIsReviewMode(false)}
+              onCopyAll={copyAll}
+              onDropSignal={onDropSignal}
+              onDropToEmpty={onDropToEmpty}
+              onDropMatter={onDropMatter}
+              onHoverEntry={onHoverEntry}
+              onSetDropTarget={setDropTarget}
+              onSetEmptyDropActive={setEmptyDropActive}
+              onSetMatterDropActive={setMatterDropActive}
+              onHandleMatterDrop={handleMatterDrop}
+              onHandleWholeMatterDrop={handleWholeMatterDrop}
+              scrollRef={scrollRef}
+            />
+          </div>
+        </>,
+        document.body,
       )}
       <div
-        className={`relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30 ${
-          isReviewMode
-            ? 'animate-slide-in-right fixed inset-y-3 right-3 z-50 max-w-[calc(100vw-24px)]'
-            : ''
-        }`}
-        style={isReviewMode ? { width: 'min(78vw, 1080px)' } : undefined}
+        className="relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30"
       >
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
@@ -212,7 +248,7 @@ export function TimesheetPanel({
               <Sparkles size={15} className="text-accent-700" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-stone-800">{isReviewMode ? 'Timesheet Review' : 'Timesheet Preview'}</h3>
+              <h3 className="text-sm font-semibold text-stone-800">Timesheet Preview</h3>
               <p className="text-[11px] text-stone-400">
                 {hasAssignedSessions
                   ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} · ${formatMinutes(totalMinutes)}`
@@ -223,18 +259,12 @@ export function TimesheetPanel({
           <div className="flex items-center gap-1.5">
             {entries.length > 0 && (
               <button
-                onClick={() => {
-                  if (isReviewMode) {
-                    setIsReviewMode(false);
-                  } else {
-                    setIsReviewMode(true);
-                  }
-                }}
+                onClick={() => setIsReviewMode(true)}
                 className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
-                title={isReviewMode ? 'Close focused preview' : 'Open focused preview'}
-                aria-label={isReviewMode ? 'Close focused preview' : 'Open focused preview'}
+                title="Open focused preview"
+                aria-label="Open focused preview"
               >
-                {isReviewMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                <Maximize2 size={14} />
               </button>
             )}
             <button
@@ -274,7 +304,7 @@ export function TimesheetPanel({
       </div>
 
       {/* Messages area */}
-      <div ref={scrollRef} className={`flex-1 overflow-y-auto ${isReviewMode ? 'px-6 py-5' : 'px-4 py-3'}`}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
         {generating && <GeneratingMessage />}
         {generationErrors.length > 0 ? (
           <div className="space-y-2">
@@ -286,7 +316,7 @@ export function TimesheetPanel({
             ))}
           </div>
         ) : (
-          <div className={`space-y-3 ${isReviewMode ? 'sm:space-y-4' : ''}`}>
+          <div className="space-y-3">
             {Array.from(matterGroups.entries()).map(([matterKey, groupEntries]) => {
               const matter = matters.find((m) => m.id === matterKey);
               const color = matter ? matterColorMap.get(matter.id) ?? '#78716c' : '#d97706';
@@ -319,10 +349,10 @@ export function TimesheetPanel({
                   style={{ animation: 'fadeInUp 0.3s ease-out both' }}
                 >
                   {/* Matter header — no arrows, always expanded */}
-                  <div className={`flex w-full items-center gap-2 ${isReviewMode ? 'px-4 py-3' : 'px-3 py-2.5'}`}>
+                  <div className="flex w-full items-center gap-2 px-3 py-2.5">
                     <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                     <div className="min-w-0 flex-1">
-                      <span className={`block truncate font-semibold text-stone-800 ${isReviewMode ? 'text-base' : 'text-sm'}`}>
+                      <span className="block truncate text-sm font-semibold text-stone-800">
                         {matter?.case_id_visible ?? matter?.name ?? 'Unassigned'}
                       </span>
                       {matter && (
@@ -358,7 +388,7 @@ export function TimesheetPanel({
                           onUpdate={(patch) => updateEntry(entry.id, patch)}
                           signalContexts={signalContexts}
                           setSignalContexts={setSignalContexts}
-                          spacious={isReviewMode}
+                          spacious={false}
                         />
                       </div>
                     ))}
@@ -425,7 +455,7 @@ export function TimesheetPanel({
 
       {/* Footer */}
       {entries.length > 0 && (
-        <div className={`shrink-0 border-t border-stone-200 bg-gradient-to-b from-white to-stone-50 ${isReviewMode ? 'px-6 py-4' : 'px-4 py-3'}`}>
+        <div className="shrink-0 border-t border-stone-200 bg-gradient-to-b from-white to-stone-50 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="text-xs text-stone-500">
               {existingRecordedMinutes > 0 && (
@@ -438,24 +468,13 @@ export function TimesheetPanel({
               </span>
             </div>
             <div className="flex items-center gap-2">
-              {!isReviewMode && (
-                <button
-                  onClick={() => setIsReviewMode(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50"
-                >
-                  <Maximize2 size={13} />
-                  Review
-                </button>
-              )}
-              {isReviewMode && (
-                <button
-                  onClick={() => setIsReviewMode(false)}
-                  className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50"
-                >
-                  <X size={13} />
-                  Close
-                </button>
-              )}
+              <button
+                onClick={() => setIsReviewMode(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50"
+              >
+                <Maximize2 size={13} />
+                Review
+              </button>
               <button
                 onClick={() => onSave(entries)}
                 disabled={saving}
@@ -489,6 +508,322 @@ export function TimesheetPanel({
         </div>
       )}
       </div>
+    </>
+  );
+}
+
+function ReviewPanelContent({
+  entries, items, matters, matterColorMap, matterGroups,
+  totalMinutes, totalBillableMinutes, targetMinutes, progressPct, barColor,
+  existingRecordedMinutes, generating, generationErrors, saving, saveError, saveSuccess,
+  expandedEntries, signalContexts, dropFlash, dropTarget,
+  emptyDropActive, matterDropActive, hasAssignedSessions, lastDropMatterId,
+  onToggleEntry, onUpdateEntry, onSetSignalContexts, onSave, onRegenerate, onClose,
+  onCopyAll, onDropSignal, onDropToEmpty, onDropMatter, onHoverEntry,
+  onSetDropTarget, onSetEmptyDropActive, onSetMatterDropActive,
+  onHandleMatterDrop, onHandleWholeMatterDrop, scrollRef,
+}: {
+  entries: DraftTimesheetEntry[];
+  items: ActivityItem[];
+  matters: Matter[];
+  matterColorMap: Map<string, string>;
+  matterGroups: Map<string, DraftTimesheetEntry[]>;
+  totalMinutes: number;
+  totalBillableMinutes: number;
+  targetMinutes: number;
+  progressPct: number;
+  barColor: string;
+  existingRecordedMinutes: number;
+  generating: boolean;
+  generationErrors: string[];
+  saving: boolean;
+  saveError: string | null;
+  saveSuccess: boolean;
+  expandedEntries: Set<string>;
+  signalContexts: Record<string, string>;
+  dropFlash: string | null;
+  dropTarget: string | null;
+  emptyDropActive: boolean;
+  matterDropActive: boolean;
+  hasAssignedSessions: boolean;
+  lastDropMatterId: string | null;
+  onToggleEntry: (id: string) => void;
+  onUpdateEntry: (id: string, patch: Partial<DraftTimesheetEntry>) => void;
+  onSetSignalContexts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  onSave: () => void;
+  onRegenerate: () => void;
+  onClose: () => void;
+  onCopyAll: () => void;
+  onDropSignal: (itemId: string, matterId: string) => void;
+  onDropToEmpty?: (itemId: string) => void;
+  onDropMatter?: (matterId: string) => void;
+  onHoverEntry?: (itemIds: string[] | null) => void;
+  onSetDropTarget: (id: string | null) => void;
+  onSetEmptyDropActive: (active: boolean) => void;
+  onSetMatterDropActive: (active: boolean) => void;
+  onHandleMatterDrop: (event: DragEvent<HTMLDivElement>, matterId: string) => void;
+  onHandleWholeMatterDrop: (event: DragEvent<HTMLDivElement>) => void;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <>
+      {/* Header */}
+      <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-100">
+              <Sparkles size={16} className="text-accent-700" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-stone-800">Timesheet Review</h3>
+              <p className="text-xs text-stone-400">
+                {hasAssignedSessions
+                  ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} · ${formatMinutes(totalMinutes)}`
+                  : 'Assign matters to generate'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onCopyAll}
+              disabled={entries.length === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50 disabled:opacity-30"
+              title="Copy as text"
+            >
+              <FileDown size={13} />
+              Copy
+            </button>
+            <button
+              onClick={onRegenerate}
+              disabled={generating || !hasAssignedSessions}
+              className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50 disabled:opacity-30"
+              title="Regenerate"
+            >
+              <RefreshCw size={13} className={generating ? 'animate-spin-slow' : ''} />
+              Regenerate
+            </button>
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50"
+              title="Close (Esc)"
+            >
+              <X size={13} />
+              Close
+            </button>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        {entries.length > 0 && (
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-xs text-stone-500">
+              <span>{formatMinutes(totalBillableMinutes)} of {formatHours(targetMinutes)}</span>
+              <span>{Math.round(progressPct)}%</span>
+            </div>
+            <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-stone-200">
+              <div
+                className="h-full rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${progressPct}%`, backgroundColor: barColor }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Messages area */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5">
+        {generating && <GeneratingMessage />}
+        {generationErrors.length > 0 ? (
+          <div className="space-y-2">
+            {generationErrors.map((err, i) => (
+              <div key={i} className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                <span>{err}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {Array.from(matterGroups.entries()).map(([matterKey, groupEntries]) => {
+              const matter = matters.find((m) => m.id === matterKey);
+              const color = matter ? matterColorMap.get(matter.id) ?? '#78716c' : '#d97706';
+              const groupMinutes = groupEntries.reduce((s, e) => s + e.confirmedMinutes, 0);
+              const isCardGenerating = generating && lastDropMatterId === matterKey;
+              const isDropFlash = dropFlash === matterKey && !isCardGenerating;
+
+              return (
+                <div
+                  key={matterKey}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDragEnter={() => matter && onSetDropTarget(matter.id)}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      onSetDropTarget(null);
+                    }
+                  }}
+                  onDrop={(event) => matter && onHandleMatterDrop(event, matter.id)}
+                  className={`overflow-hidden rounded-xl border shadow-sm transition-all duration-200 ${
+                    dropTarget === matter?.id
+                      ? 'border-accent-300 bg-accent-50/50 ring-2 ring-inset ring-accent-300'
+                      : isDropFlash
+                        ? 'border-accent-200 bg-accent-50/30 drop-pulse'
+                        : 'border-stone-200 bg-white'
+                  }`}
+                  style={{ animation: 'fadeInUp 0.3s ease-out both' }}
+                >
+                  {/* Matter header */}
+                  <div className="flex w-full items-center gap-2.5 px-4 py-3.5">
+                    <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate text-base font-semibold text-stone-800">
+                        {matter?.case_id_visible ?? matter?.name ?? 'Unassigned'}
+                      </span>
+                      {matter && (
+                        <span className="block truncate text-xs text-stone-400">{matter.name}</span>
+                      )}
+                    </div>
+                    {isCardGenerating && (
+                      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-accent-700">
+                        <Loader2 size={12} className="animate-spin-slow" />
+                        Generating
+                      </span>
+                    )}
+                    <span className="shrink-0 text-sm font-medium text-stone-600">
+                      {formatMinutes(groupMinutes)}
+                    </span>
+                  </div>
+
+                  {/* Entries */}
+                  <div className="divide-y divide-stone-100 border-t border-stone-100">
+                    {groupEntries.map((entry, i) => (
+                      <div
+                        key={entry.id}
+                        style={{ animation: `fadeInUp 0.3s ease-out ${i * 60}ms both` }}
+                        onMouseEnter={() => onHoverEntry?.(entry.sourceItemIds ?? null)}
+                        onMouseLeave={() => onHoverEntry?.(null)}
+                      >
+                        <ExpandableEntryRow
+                          entry={entry}
+                          items={items}
+                          color={color}
+                          isExpanded={expandedEntries.has(entry.id)}
+                          onToggle={() => onToggleEntry(entry.id)}
+                          onUpdate={(patch) => onUpdateEntry(entry.id, patch)}
+                          signalContexts={signalContexts}
+                          setSignalContexts={onSetSignalContexts}
+                          spacious
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Drop zone for dragging a whole case */}
+        {onDropMatter && !generating && (
+          <div
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'copy';
+              if (!matterDropActive) onSetMatterDropActive(true);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                onSetMatterDropActive(false);
+              }
+            }}
+            onDrop={onHandleWholeMatterDrop}
+            className={`mb-2 mt-3 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-2.5 text-center transition-all duration-200 ${
+              matterDropActive
+                ? 'border-accent-400 bg-accent-50/60 scale-[1.01]'
+                : 'border-stone-200 bg-stone-50/40'
+            }`}
+          >
+            <FolderOpen size={15} className={matterDropActive ? 'text-accent-600' : 'text-stone-300'} />
+            <p className={`text-xs ${matterDropActive ? 'text-accent-700' : 'text-stone-400'}`}>
+              {matterDropActive ? 'Drop case to generate timesheet' : 'Drag a case here to add all its signals'}
+            </p>
+          </div>
+        )}
+
+        {/* Persistent drop zone for unassigned signals */}
+        {!generating && generationErrors.length === 0 && (
+          <div
+            onDragOver={(event) => {
+              if (!onDropToEmpty) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+            }}
+            onDragEnter={() => onDropToEmpty && onSetEmptyDropActive(true)}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                onSetEmptyDropActive(false);
+              }
+            }}
+            onDrop={(event) => {
+              if (!onDropToEmpty) return;
+              event.preventDefault();
+              const itemId = event.dataTransfer.getData('text/daykeeper-item');
+              onSetEmptyDropActive(false);
+              if (itemId) onDropToEmpty(itemId);
+            }}
+          >
+            <EmptyState hasAssigned={hasAssignedSessions} dropActive={emptyDropActive} compact={entries.length > 0} />
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      {entries.length > 0 && (
+        <div className="shrink-0 border-t border-stone-200 bg-gradient-to-b from-white to-stone-50 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-stone-500">
+              {existingRecordedMinutes > 0 && (
+                <span className="text-stone-400">
+                  Already recorded: {formatMinutes(existingRecordedMinutes)} ·{' '}
+                </span>
+              )}
+              <span>
+                Draft: <span className="text-base font-semibold text-stone-800">{formatMinutes(totalMinutes)}</span>
+              </span>
+            </div>
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className={`btn-primary text-sm ${saving ? 'progress-shimmer' : ''}`}
+            >
+              {saving ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin-slow" />
+                  Saving...
+                </span>
+              ) : saveSuccess ? (
+                <span className="flex items-center gap-2">
+                  <CheckCircle2 size={14} />
+                  Saved
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Save size={14} />
+                  Save timesheet
+                </span>
+              )}
+            </button>
+          </div>
+          {saveError && (
+            <div className="mt-2 flex items-center gap-2 rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700">
+              <AlertCircle size={12} />
+              {saveError}
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
