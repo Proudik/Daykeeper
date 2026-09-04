@@ -334,7 +334,7 @@ export function TimesheetPanel({
         )}
 
         {/* Drop zone for dragging a whole case into the timesheet */}
-        {onDropMatter && !generating && entries.length === 0 && (
+        {onDropMatter && !generating && !expandedEntry && (
           <div
             onDragOver={(event) => {
               event.preventDefault();
@@ -361,8 +361,9 @@ export function TimesheetPanel({
         )}
 
         {/* Persistent drop zone for unassigned signals */}
-        {!generating && generationErrors.length === 0 && entries.length === 0 && (
+        {!generating && generationErrors.length === 0 && !expandedEntry && (
           <div
+            className="mb-2"
             onDragOver={(event) => {
               if (!onDropToEmpty) return;
               event.preventDefault();
