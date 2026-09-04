@@ -7,7 +7,7 @@ import { createGoogleProvider, getGoogleLastError, clearGoogleLastError, type Go
 import { createCustomProvider, getCustomError, clearCustomError, type CustomProviderData } from '@/providers/custom';
 import { createBrowserProvider } from '@/providers/browser';
 import { createWebhookProvider } from '@/providers/webhook';
-import { subscribeToDaySignals, subscribeToWebhookSignals, subscribeToScDocumentSignals, insertScDocumentSignal, deleteScDocumentSignal } from '@/lib/signals';
+import { subscribeToDaySignals, subscribeToWebhookSignals, subscribeToScDocumentSignals, deleteScDocumentSignal } from '@/lib/signals';
 import type { SingleCaseTimeEntry } from '@/providers/singlecase/types';
 import type {
   ActivityItem,
@@ -38,12 +38,10 @@ import { ActivityList } from '@/components/ActivityList';
 import { CalendarBoard } from '@/components/CalendarBoard';
 import { VerticalTimeline } from '@/components/VerticalTimeline';
 import { TimesheetPanel } from '@/components/TimesheetPanel';
-import { ManualEntryForm } from '@/components/ManualEntryForm';
 import {
   ChevronDown,
   ChevronRight,
   Clock,
-  Plus,
   AlertCircle,
   CheckCircle2,
   FolderOpen,
@@ -54,7 +52,7 @@ import {
   ListChecks,
   FileText,
   Sparkles,
-  FileEdit,
+  Briefcase,
   FlaskConical,
 } from 'lucide-react';
 import { generateMockItems } from '@/lib/mockData';
@@ -131,7 +129,6 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const [generating, setGenerating] = useState(false);
   const [generationErrors, setGenerationErrors] = useState<string[]>([]);
   const [groupMode, setGroupMode] = useState<GroupMode>('matter');
-  const [showManualForm, setShowManualForm] = useState(false);
   const [matterRules, setMatterRules] = useState<MatterRule[]>([]);
   const [recentMatterIds, setRecentMatterIds] = useState<string[]>([]);
   const [manualOverrides, setManualOverrides] = useState<Map<string, string | null>>(new Map());
@@ -140,7 +137,6 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [usedItemIds, setUsedItemIds] = useState<Set<string>>(new Set());
-  const [autoGenEnabled, setAutoGenEnabled] = useState(true);
   const autoGenTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lastDropMatterId, setLastDropMatterId] = useState<string | null>(null);
   const [pendingDropItemId, setPendingDropItemId] = useState<string | null>(null);
@@ -472,7 +468,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
       setManualEntries((data as ManualEntry[]) ?? []);
     }
     loadManual();
-  }, [selectedDate, profile?.user_id, showManualForm]);
+  }, [selectedDate, profile?.user_id]);
 
   // Keyboard shortcut: Cmd/Ctrl+Enter to generate
   useEffect(() => {
@@ -778,73 +774,6 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     }
   }
 
-  function handleManualSaved(entry: ManualEntry) {
-    setManualEntries((prev) => [...prev, entry]);
-    setShowManualForm(false);
-  }
-
-  async function handleSimulateDocEdit() {
-    const now = new Date();
-    const tz = profile?.timezone ?? 'Europe/Prague';
-    const localNow = new Date(now.toLocaleString('en-US', { timeZone: tz }));
-    const hour = localNow.getHours();
-    const minute = localNow.getMinutes();
-
-    const startMin = Math.max(0, hour * 60 + minute - 45);
-    const durationMin = 15 + Math.floor(Math.random() * 30);
-    const endMin = startMin + durationMin;
-
-    const startHour = Math.floor(startMin / 60);
-    const startMinute = startMin % 60;
-    const endHour = Math.floor(endMin / 60);
-    const endMinute = endMin % 60;
-
-    const dayStr = selectedDate;
-    const startTime = `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`;
-    const endTime = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
-
-    const startIso = new Date(`${dayStr}T${startTime}:00`).toISOString();
-    const endIso = new Date(`${dayStr}T${endTime}:00`).toISOString();
-
-    const docNames = [
-      'Purchase_Agreement_v3.docx',
-      'NDA_TechCorp_final.docx',
-      'Litigation_Memo_case142.docx',
-      'Contract_Review_draft.docx',
-      'Motion_to_Dismiss.docx',
-      'Settlement_Draft.docx',
-    ];
-    const fileName = docNames[Math.floor(Math.random() * docNames.length)];
-    const wordCount = 200 + Math.floor(Math.random() * 1800);
-    const revisionCount = 1 + Math.floor(Math.random() * 4);
-
-    const matter = matters.length > 0 ? matters[Math.floor(Math.random() * matters.length)] : null;
-
-    const result = await insertScDocumentSignal({
-      day: dayStr,
-      timestamp: startIso,
-      end_timestamp: endIso,
-      duration_minutes: durationMin,
-      file_name: fileName,
-      case_id: matter?.external_id ?? null,
-      case_name: matter?.name ?? null,
-      case_id_visible: matter?.case_id_visible ?? null,
-      word_count: wordCount,
-      revision_count: revisionCount,
-      summary: `Editing ${fileName}${matter ? ` · ${matter.case_id_visible ?? matter.name}` : ''}`,
-    });
-
-    if (!result.ok) {
-      setProviderError(
-        result.error
-          ? `Could not save document signal: ${result.error}`
-          : 'The document signal could not be saved. Please refresh and try again.',
-      );
-      return;
-    }
-    await fetchActivity(true);
-  }
-
   async function handleDeleteItem(itemId: string) {
     if (itemId.startsWith('scdoc-')) {
       const signalId = itemId.replace('scdoc-', '');
@@ -907,10 +836,9 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     ? resolvedSessions.find((session) => session.sourceItemIds.includes(pendingDropItemId)) ?? null
     : null;
 
-  // Auto-generate: when the set of assigned sessions changes and auto-gen is on,
+  // Auto-generate: when the set of assigned sessions changes,
   // debounce-regenerate the timesheet preview.
   useEffect(() => {
-    if (!autoGenEnabled) return;
     if (!hasAssignedSessions) {
       setDraftEntries(null);
       setEstimateResult(null);
@@ -925,7 +853,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
       if (autoGenTimer.current) clearTimeout(autoGenTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assignedSessionSignature, autoGenEnabled, generationRevision]);
+  }, [assignedSessionSignature, generationRevision]);
 
   return (
     <div className="flex h-full flex-col view-transition">
@@ -984,14 +912,6 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             >
               <FlaskConical size={14} />
               <span className="hidden lg:inline">{useMockData ? 'Mock data ON' : 'Mock data'}</span>
-            </button>
-            <button
-              onClick={handleSimulateDocEdit}
-              title="Simulate SingleCase document editing"
-              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-50"
-            >
-              <FileEdit size={14} />
-              <span className="hidden lg:inline">Simulate doc edit</span>
             </button>
             <button
               onClick={() => fetchActivity()}
@@ -1227,10 +1147,13 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
               usedItemIds={usedItemIds}
               generatedItemIds={generatedItemIds}
               highlightedItemIds={hoveredEntryItemIds}
-              recentMatterIds={recentMatterIds}
+              manualOverrides={manualOverrides}
               onAssign={(itemId, matterId) => {
                 setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
                 setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, matterId); return next; });
+                setSelectedIds((prev) => new Set(prev).add(itemId));
+                setLastDropMatterId(matterId);
+                setGenerationRevision((r) => r + 1);
               }}
               onDropGroup={(itemIds, matterId) => {
                 setSelectedIds((prev) => {
@@ -1423,77 +1346,123 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         </button>
       </div>
 
-      {/* Bottom bar: Add manually + auto-gen toggle (desktop only) */}
-      <div className="hidden shrink-0 border-t border-stone-200 bg-white px-4 py-3 sm:block">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowManualForm(true)}
-              className="btn-secondary text-sm"
+      {/* Recent cases drop zone */}
+      <RecentCasesBar
+        matters={matters}
+        recentMatterIds={recentMatterIds}
+        onDropGroup={(itemIds, matterId) => {
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            for (const id of itemIds) next.add(id);
+            return next;
+          });
+          setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
+          setManualOverrides((prev) => {
+            const next = new Map(prev);
+            for (const id of itemIds) next.set(id, matterId);
+            return next;
+          });
+          setLastDropMatterId(matterId);
+          setGenerationRevision((r) => r + 1);
+        }}
+      />
+
+    </div>
+  );
+}
+
+// --- Recent cases drop zone ------------------------------------------------
+
+function RecentCasesBar({
+  matters,
+  recentMatterIds,
+  onDropGroup,
+}: {
+  matters: Matter[];
+  recentMatterIds: string[];
+  onDropGroup: (itemIds: string[], matterId: string) => void;
+}) {
+  const [dragOverMatter, setDragOverMatter] = useState<string | null>(null);
+
+  const bucketMatters = useMemo(() => {
+    const recent = recentMatterIds
+      .map((id) => matters.find((m) => m.id === id))
+      .filter((m): m is Matter => Boolean(m));
+    if (recent.length < 5) {
+      const extra = matters
+        .filter((m) => !recent.find((r) => r.id === m.id))
+        .slice(0, 5 - recent.length);
+      return [...recent, ...extra];
+    }
+    return recent;
+  }, [recentMatterIds, matters]);
+
+  function handleDrop(e: React.DragEvent, matterId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const payload = e.dataTransfer.getData('text/daykeeper-items');
+    let ids: string[];
+    try {
+      ids = JSON.parse(payload);
+    } catch {
+      const single = e.dataTransfer.getData('text/daykeeper-item');
+      ids = single ? [single] : [];
+    }
+    if (ids.length > 0 && ids[0]) {
+      onDropGroup(ids, matterId);
+    }
+    setDragOverMatter(null);
+  }
+
+  return (
+    <div className="shrink-0 border-t border-stone-200 bg-white px-4 py-3">
+      <div className="mb-2 flex items-center gap-2">
+        <Briefcase size={14} className="text-stone-500" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">
+          Recent Cases
+        </span>
+        <span className="text-[10px] text-stone-400">
+          Drag signals here to assign & generate timesheet
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {bucketMatters.map((matter) => {
+          const isDropTarget = dragOverMatter === matter.id;
+          return (
+            <div
+              key={matter.id}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setDragOverMatter(matter.id);
+              }}
+              onDragLeave={() => setDragOverMatter(null)}
+              onDrop={(e) => handleDrop(e, matter.id)}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-all duration-150 ${
+                isDropTarget
+                  ? 'border-accent-400 bg-accent-50 ring-2 ring-accent-300'
+                  : 'border-stone-200 bg-stone-50 hover:border-stone-300 hover:bg-stone-100'
+              }`}
             >
-              <Plus size={16} /> Add manually
-            </button>
-            <label className="flex items-center gap-1.5 text-xs text-stone-500">
-              <input
-                type="checkbox"
-                checked={autoGenEnabled}
-                onChange={(e) => setAutoGenEnabled(e.target.checked)}
-                className="rounded accent-accent-600"
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: MATTER_PALETTE[bucketMatters.indexOf(matter) % MATTER_PALETTE.length] }}
               />
-              Auto-generate
-            </label>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold text-stone-700">
+                  {matter.case_id_visible ?? matter.name}
+                </p>
+                <p className="truncate text-[10px] text-stone-400">{matter.name}</p>
+              </div>
+            </div>
+          );
+        })}
+        {bucketMatters.length === 0 && (
+          <div className="flex items-center gap-2 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-xs text-stone-400">
+            <span>No matters yet — connect SingleCase in Settings</span>
           </div>
-          {!autoGenEnabled && (
-            <button
-              onClick={handleGenerate}
-              disabled={generationItems.length === 0 || generating}
-              className={`btn-primary relative overflow-hidden ${generating ? 'progress-shimmer' : ''}`}
-            >
-              {generating ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin-slow" />
-                  Generating...
-                </span>
-              ) : (
-                `Generate timesheet`
-              )}
-            </button>
-          )}
-        </div>
+        )}
       </div>
-
-      {/* Mobile: sticky generate button */}
-      <div className="shrink-0 border-t border-stone-200 bg-white px-4 py-3 sm:hidden">
-        <button
-          onClick={handleGenerate}
-          disabled={generationItems.length === 0 || generating}
-          className={`btn-primary relative w-full overflow-hidden ${generating ? 'progress-shimmer' : ''}`}
-        >
-          {generating ? (
-            <span className="flex items-center gap-2">
-              <Loader2 size={16} className="animate-spin-slow" />
-              Generating...
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <Sparkles size={16} />
-              Generate timesheet
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Manual entry modal */}
-      {showManualForm && (
-        <ManualEntryForm
-          workDate={selectedDate}
-          matters={matters}
-          activityTypes={activityTypes}
-          onSaved={handleManualSaved}
-          onCancel={() => setShowManualForm(false)}
-        />
-      )}
-
     </div>
   );
 }

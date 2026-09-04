@@ -15,8 +15,6 @@ import {
   Inbox,
   Globe,
   Layers,
-  Briefcase,
-  Plus,
   CheckCircle2,
   Link2,
   X,
@@ -223,7 +221,7 @@ interface CalendarBoardProps {
   usedItemIds: Set<string>;
   generatedItemIds: Set<string>;
   highlightedItemIds: Set<string>;
-  recentMatterIds: string[];
+  manualOverrides: Map<string, string | null>;
   onAssign: (itemId: string, matterId: string) => void;
   onDropGroup: (itemIds: string[], matterId: string) => void;
   onHoverEntry: (itemIds: string[] | null) => void;
@@ -246,14 +244,13 @@ export function CalendarBoard({
   usedItemIds,
   generatedItemIds,
   highlightedItemIds,
-  recentMatterIds,
+  manualOverrides,
   onAssign: _onAssign,
   onDropGroup,
   onHoverEntry,
   onConnectGroup,
 }: CalendarBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverMatter, setDragOverMatter] = useState<string | null>(null);
   const [hoveredBlock, setHoveredBlock] = useState<string | null>(null);
   const [manualLinks, setManualLinks] = useState<Set<string>>(new Set());
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
@@ -522,19 +519,6 @@ export function CalendarBoard({
   }, [displayStart, displayEnd]);
 
   // Recent matters as buckets
-  const bucketMatters = useMemo(() => {
-    const recent = recentMatterIds
-      .map((id) => matters.find((m) => m.id === id))
-      .filter((m): m is Matter => Boolean(m));
-    if (recent.length < 5) {
-      const extra = matters
-        .filter((m) => !recent.find((r) => r.id === m.id))
-        .slice(0, 5 - recent.length);
-      return [...recent, ...extra];
-    }
-    return recent;
-  }, [recentMatterIds, matters]);
-
   // Drag handlers
   const handleDragStart = useCallback((e: React.DragEvent, block: PlacedBlock) => {
     const groupIds = getDragGroupIds(block);
@@ -547,24 +531,9 @@ export function CalendarBoard({
 
   const handleDragEnd = useCallback(() => {
     setDraggingId(null);
-    setDragOverMatter(null);
   }, []);
 
-  const handleMatterDrop = useCallback((e: React.DragEvent, matterId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const payload = e.dataTransfer.getData('text/daykeeper-items');
-    let ids: string[];
-    try {
-      ids = JSON.parse(payload);
-    } catch {
-      ids = [e.dataTransfer.getData('text/daykeeper-item')];
-    }
-    if (ids.length > 0 && ids[0]) {
-      onDropGroup(ids, matterId);
-    }
-    setDragOverMatter(null);
-  }, [onDropGroup]);
+
 
   // Compute which block keys are connected to the hovered block (for highlighting connections)
   const hoveredConnections = useMemo(() => {
@@ -642,6 +611,17 @@ export function CalendarBoard({
               {block.itemIds.length} signals
             </span>
           )}
+          {(() => {
+            const matterId = block.itemIds.map((id) => manualOverrides.get(id)).find((v) => v !== undefined && v !== null);
+            if (!matterId) return null;
+            const matter = matters.find((m) => m.id === matterId);
+            if (!matter) return null;
+            return (
+              <span className="mt-0.5 inline-block max-w-full truncate rounded bg-blue-100/80 px-1 text-[8px] font-semibold text-blue-700">
+                {matter.case_id_visible ?? matter.name}
+              </span>
+            );
+          })()}
           {block.isUsed && (
             <CheckCircle2 size={10} className="absolute right-1 top-1 text-emerald-600" />
           )}
@@ -828,57 +808,6 @@ export function CalendarBoard({
         </div>
       </div>
 
-      {/* Case buckets — below the calendar */}
-      <div className="shrink-0 border-t border-stone-200 bg-white px-4 py-3">
-        <div className="mb-2 flex items-center gap-2">
-          <Briefcase size={14} className="text-stone-500" />
-          <span className="text-xs font-semibold uppercase tracking-wide text-stone-500">
-            Recent Cases
-          </span>
-          <span className="text-[10px] text-stone-400">
-            Drag signals (or connected groups) here to create timesheet entries
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {bucketMatters.map((matter) => {
-            const isDropTarget = dragOverMatter === matter.id;
-            return (
-              <div
-                key={matter.id}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  setDragOverMatter(matter.id);
-                }}
-                onDragLeave={() => setDragOverMatter(null)}
-                onDrop={(e) => handleMatterDrop(e, matter.id)}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-all duration-150 ${
-                  isDropTarget
-                    ? 'border-accent-400 bg-accent-50 ring-2 ring-accent-300'
-                    : 'border-stone-200 bg-stone-50 hover:border-stone-300 hover:bg-stone-100'
-                }`}
-              >
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: MATTER_PALETTE[bucketMatters.indexOf(matter) % MATTER_PALETTE.length] }}
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold text-stone-700">
-                    {matter.case_id_visible ?? matter.name}
-                  </p>
-                  <p className="truncate text-[10px] text-stone-400">{matter.name}</p>
-                </div>
-              </div>
-            );
-          })}
-          {bucketMatters.length === 0 && (
-            <div className="flex items-center gap-2 rounded-lg border border-dashed border-stone-300 px-3 py-2 text-xs text-stone-400">
-              <Plus size={14} />
-              <span>No matters yet — connect SingleCase in Settings</span>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
