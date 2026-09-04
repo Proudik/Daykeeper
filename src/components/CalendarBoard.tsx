@@ -173,50 +173,18 @@ function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]
   const sorted = blocks
     .map((block, index) => ({ ...block, index }))
     .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+  const laneEnds: number[] = [];
+  const result = blocks.map(() => ({ lane: 0, laneCount: 0 }));
 
-  // Group blocks into overlap clusters: blocks that overlap (or chain through
-  // overlapping neighbors) share a cluster. Each cluster gets its own lane
-  // count, so a lone signal with no neighbors renders at full width.
-  const clusterOf = new Array(sorted.length).fill(-1);
-  let clusterId = 0;
-  for (let i = 0; i < sorted.length; i++) {
-    if (clusterOf[i] !== -1) continue;
-    clusterOf[i] = clusterId;
-    let clusterEnd = sorted[i].endMin;
-    for (let j = i + 1; j < sorted.length; j++) {
-      if (sorted[j].startMin < clusterEnd) {
-        clusterOf[j] = clusterId;
-        clusterEnd = Math.max(clusterEnd, sorted[j].endMin);
-      } else if (clusterOf[j] === -1) {
-        break;
-      }
-    }
-    clusterId++;
+  for (const block of sorted) {
+    let lane = laneEnds.findIndex((end) => end <= block.startMin);
+    if (lane === -1) lane = laneEnds.length;
+    laneEnds[lane] = block.endMin;
+    result[block.index] = { lane, laneCount: 0 };
   }
 
-  const result = blocks.map(() => ({ lane: 0, laneCount: 1 }));
-
-  // Assign lanes within each cluster independently
-  const clusters = new Map<number, number[]>();
-  sorted.forEach((block, i) => {
-    const cid = clusterOf[i];
-    const arr = clusters.get(cid) ?? [];
-    arr.push(i);
-    clusters.set(cid, arr);
-  });
-
-  for (const [, memberIndices] of clusters) {
-    const laneEnds: number[] = [];
-    for (const i of memberIndices) {
-      const block = sorted[i];
-      let lane = laneEnds.findIndex((end) => end <= block.startMin);
-      if (lane === -1) lane = laneEnds.length;
-      laneEnds[lane] = block.endMin;
-      result[block.index] = { lane, laneCount: Math.max(laneEnds.length, 1) };
-    }
-  }
-
-  return result;
+  const laneCount = Math.max(laneEnds.length, 1);
+  return result.map((assignment) => ({ ...assignment, laneCount }));
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -433,7 +401,7 @@ export function CalendarBoard({
     const isPreviewHighlighted = highlightedItemIds.size > 0 && block.itemIds.some((id) => highlightedItemIds.has(id));
     const isPreviewDimmed = highlightedItemIds.size > 0 && !isPreviewHighlighted;
     const isHovered = hoveredBlock === block.key;
-    const width = block.laneCount === 1 ? 97 : Math.max(24, 100 / block.laneCount - 3);
+    const width = Math.max(24, 100 / block.laneCount - 3);
     const left = (block.lane * 100) / block.laneCount + 1.5;
 
     const matterId = block.itemIds.map((id) => manualOverrides.get(id)).find((v) => v !== undefined && v !== null);
