@@ -404,6 +404,12 @@ export function CalendarBoard({
     const width = Math.max(24, 100 / block.laneCount - 3);
     const left = (block.lane * 100) / block.laneCount + 1.5;
 
+    const expandedWidth = Math.max(width, 45);
+    const expandLeft = isHovered
+      ? Math.min(left, 100 - expandedWidth - 1)
+      : left;
+    const expandWidth = isHovered ? expandedWidth : width;
+
     return (
       <div
         key={block.key}
@@ -416,29 +422,29 @@ export function CalendarBoard({
         onMouseLeave={() => {
           setHoveredBlock(null);
         }}
-        className={`group absolute cursor-grab overflow-hidden rounded-md border text-left transition-all duration-150 ${
+        className={`group absolute cursor-grab rounded-md border text-left transition-all duration-150 ${
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
-        } ${isHovered ? 'shadow-md z-10' : ''}`}
+        } ${isHovered ? 'shadow-lg z-30 overflow-visible' : 'overflow-hidden z-10'}`}
         style={{
           top: topPx,
-          height: heightPx,
-          left: `${left}%`,
-          width: `${width}%`,
+          height: isHovered ? 'auto' : heightPx,
+          minHeight: heightPx,
+          left: `${expandLeft}%`,
+          width: `${expandWidth}%`,
           borderColor: block.color,
           backgroundColor: block.isInTimesheet ? `${block.color}55` : `${block.color}18`,
         }}
-        title={`${block.label} · ${block.subLabel}${block.isUsed ? ' · Used' : ''}${block.isInTimesheet ? ' · In timesheet' : ''}`}
       >
         <div className="h-full border-l-[3px] px-1.5 py-1" style={{ borderColor: block.color }}>
           {heightPx >= 20 && (
-            <p className="truncate text-[10px] font-medium leading-tight text-stone-700">
+            <p className={`text-[10px] font-medium leading-tight text-stone-700 ${isHovered ? 'whitespace-normal' : 'truncate'}`}>
               {block.label}
             </p>
           )}
           {heightPx >= 34 && (
-            <p className="truncate text-[9px] leading-tight text-stone-500">
+            <p className={`text-[9px] leading-tight text-stone-500 ${isHovered ? 'whitespace-normal' : 'truncate'}`}>
               {block.subLabel}
             </p>
           )}
@@ -459,7 +465,7 @@ export function CalendarBoard({
                 style={{ backgroundColor: matterColor }}
               >
                 <Briefcase size={7} className="shrink-0" />
-                <span className="truncate">{matter.name}</span>
+                <span className={isHovered ? 'whitespace-normal' : 'truncate'}>{matter.name}</span>
               </div>
             );
           })()}
