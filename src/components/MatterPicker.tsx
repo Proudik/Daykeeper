@@ -87,7 +87,7 @@ export function MatterPicker({
     return recentMatterIds
       .map((id) => matters.find((m) => m.id === id))
       .filter((m): m is Matter => m !== undefined)
-      .slice(0, 5);
+      .slice(0, 3);
   }, [query, recentMatterIds, matters]);
 
   const closedMatters = useMemo(() => {
@@ -331,14 +331,14 @@ function CandidateRow({
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium text-stone-800">
+            {candidate.matter.name}
+          </span>
           {candidate.matter.case_id_visible && (
             <span className="shrink-0 font-mono text-[11px] text-stone-400">
               {candidate.matter.case_id_visible}
             </span>
           )}
-          <span className="truncate text-sm font-medium text-stone-800">
-            {candidate.matter.name}
-          </span>
           {isCurrent && (
             <span className="ml-auto shrink-0 flex items-center gap-1 text-[11px] text-green-600">
               <Check size={11} /> current
@@ -396,14 +396,14 @@ function MatterRow({
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
+          <span className={`truncate text-sm font-medium ${isClosed ? 'text-stone-400' : 'text-stone-800'}`}>
+            {matter.name}
+          </span>
           {matter.case_id_visible && (
             <span className="shrink-0 font-mono text-[11px] text-stone-400">
               {matter.case_id_visible}
             </span>
           )}
-          <span className={`truncate text-sm font-medium ${isClosed ? 'text-stone-400' : 'text-stone-800'}`}>
-            {matter.name}
-          </span>
           {isCurrent && (
             <span className="ml-auto shrink-0 flex items-center gap-1 text-[11px] text-green-600">
               <Check size={11} /> current

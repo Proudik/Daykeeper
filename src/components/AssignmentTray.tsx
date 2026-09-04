@@ -603,8 +603,8 @@ export function AssignmentTray({
                 className="h-2 w-2 rounded-full"
                 style={{ backgroundColor: matterColorMap.get(matter.id) ?? UNASSIGNED_COLOR }}
               />
-              <span className="font-mono text-stone-600">
-                {matter.case_id_visible ?? matter.name}
+              <span className="truncate text-stone-600">
+                {matter.name}
               </span>
             </button>
           ) : isNonBillable ? (
@@ -1111,10 +1111,10 @@ function ClusterGroup({
                     onClick={() => { onAssignAll(m.id); setShowAssignMenu(false); }}
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-stone-50"
                   >
+                    <span className="truncate text-stone-700">{m.name}</span>
                     {m.case_id_visible && (
                       <span className="font-mono text-xs text-stone-500">{m.case_id_visible}</span>
                     )}
-                    <span className="truncate text-stone-700">{m.name}</span>
                   </button>
                 ))}
               </div>
@@ -1174,10 +1174,10 @@ function BulkAssignButton({
               onClick={() => { onAssign(m.id); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-stone-50"
             >
+              <span className="truncate text-stone-700">{m.name}</span>
               {m.case_id_visible && (
                 <span className="font-mono text-xs text-stone-500">{m.case_id_visible}</span>
               )}
-              <span className="truncate text-stone-700">{m.name}</span>
             </button>
           ))}
         </div>

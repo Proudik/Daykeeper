@@ -154,18 +154,26 @@ export function TimesheetPanel({
     }
   }, [entries.length]);
 
-  // Close flyout on Escape
+  // Close on Escape or click-away
   useEffect(() => {
     if (!expandedEntryId) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setExpandedEntryId(null);
     };
+    const handleClickAway = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('[data-timesheet-panel]')) setExpandedEntryId(null);
+    };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickAway);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickAway);
+    };
   }, [expandedEntryId]);
 
   return (
-    <div className={`absolute inset-y-3 right-3 z-20 flex flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30 transition-[width] duration-300 ease-out ${expandedEntry ? 'w-[min(68vw,950px)]' : 'w-[calc(100%-12px)]'}`}>
+    <div data-timesheet-panel className={`absolute inset-y-3 right-3 z-20 flex flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30 transition-[width] duration-300 ease-out ${expandedEntry ? 'w-[min(68vw,950px)]' : 'w-[calc(100%-12px)]'}`}>
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
         <div className="flex items-center justify-between">
@@ -174,8 +182,8 @@ export function TimesheetPanel({
               <Sparkles size={15} className="text-accent-700" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-stone-800">Timesheet Preview</h3>
-              <p className="text-[11px] text-stone-400">
+              <h3 className="text-xs font-semibold text-stone-800">Timesheet Preview</h3>
+              <p className="text-[10px] text-stone-400">
                 {hasAssignedSessions
                   ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} · ${formatMinutes(totalMinutes)}`
                   : 'Assign matters to generate'}
@@ -205,11 +213,11 @@ export function TimesheetPanel({
         {/* Progress bar */}
         {entries.length > 0 && (
           <div className="mt-2.5">
-            <div className="flex items-center justify-between text-[11px] text-stone-500">
+            <div className="flex items-center justify-between text-[10px] text-stone-500">
               <span>{formatMinutes(totalBillableMinutes)} of {formatHours(targetMinutes)}</span>
               <span>{Math.round(progressPct)}%</span>
             </div>
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
+            <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-stone-200">
               <div
                 className="h-full rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progressPct}%`, backgroundColor: barColor }}
@@ -262,26 +270,26 @@ export function TimesheetPanel({
                         ? 'border-accent-200 bg-accent-50/30 drop-pulse'
                         : 'border-stone-200 bg-white'
                   }`}
-                  style={{ animation: 'fadeInUp 0.3s ease-out both' }}
+                  style={{ animation: 'fadeInUp 0.3s ease-out both', borderLeftColor: color, borderLeftWidth: '3px' }}
                 >
                   {/* Matter header */}
-                  <div className="flex w-full items-center gap-2 px-3 py-2.5">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+                  <div className="flex w-full items-center gap-2 px-3 py-2">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                     <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-stone-800">
-                        {matter?.case_id_visible ?? matter?.name ?? 'Unassigned'}
+                      <span className="block truncate text-xs font-semibold text-stone-800">
+                        {matter?.name ?? 'Unassigned'}
                       </span>
-                      {matter && (
-                        <span className="block truncate text-[11px] text-stone-400">{matter.name}</span>
+                      {matter?.case_id_visible && (
+                        <span className="block truncate text-[10px] font-mono text-stone-400">{matter.case_id_visible}</span>
                       )}
                     </div>
                     {isCardGenerating && (
-                      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-accent-700">
-                        <Loader2 size={12} className="animate-spin-slow" />
+                      <span className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-accent-700">
+                        <Loader2 size={11} className="animate-spin-slow" />
                         Generating
                       </span>
                     )}
-                    <span className="shrink-0 text-xs font-medium text-stone-600">
+                    <span className="shrink-0 text-[11px] font-medium text-stone-600">
                       {formatMinutes(groupMinutes)}
                     </span>
                   </div>
@@ -325,7 +333,7 @@ export function TimesheetPanel({
         )}
 
         {/* Drop zone for dragging a whole case into the timesheet */}
-        {onDropMatter && !generating && (
+        {onDropMatter && !generating && entries.length === 0 && (
           <div
             onDragOver={(event) => {
               event.preventDefault();
@@ -352,7 +360,7 @@ export function TimesheetPanel({
         )}
 
         {/* Persistent drop zone for unassigned signals */}
-        {!generating && generationErrors.length === 0 && (
+        {!generating && generationErrors.length === 0 && entries.length === 0 && (
           <div
             onDragOver={(event) => {
               if (!onDropToEmpty) return;
@@ -442,31 +450,31 @@ function ExpandableEntryRow({
     <div className="transition-colors duration-150">
       <button
         onClick={onToggle}
-        className={`flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-stone-50 ${
+        className={`flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-stone-50 ${
           isExpanded ? 'bg-accent-50/40 ring-1 ring-inset ring-accent-200' : ''
         }`}
       >
-        <div className="mt-1.5 h-1 w-1 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <div className="mt-1 h-1 w-1 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <div className="min-w-0 flex-1">
-          <p className={`text-sm leading-relaxed text-stone-700 ${isExpanded ? 'font-medium' : ''}`}>
+          <p className={`text-xs leading-relaxed text-stone-700 ${isExpanded ? 'font-medium' : ''}`}>
             {entry.description}
           </p>
-          <div className="mt-1.5 flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-1.5">
             {entry.activityType && (
-              <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-500">
+              <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-600">
                 {entry.activityType}
               </span>
             )}
-            <span className="flex items-center gap-0.5 text-[11px] text-stone-400">
-              <Clock size={10} />
+            <span className="flex items-center gap-0.5 text-[10px] text-stone-400">
+              <Clock size={9} />
               {entry.confirmedMinutes} min
             </span>
             {!entry.billable && (
-              <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] text-stone-400">
+              <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[9px] text-stone-400">
                 Non-billable
               </span>
             )}
-            <span className="ml-auto text-[10px] text-stone-300">
+            <span className="ml-auto text-[9px] text-stone-300">
               {isExpanded ? 'Editing' : 'Edit'}
             </span>
           </div>
@@ -498,47 +506,47 @@ function EntryEditorPanel({
     .filter((item): item is ActivityItem => Boolean(item));
 
   return (
-    <aside className="animate-slide-in-right absolute inset-y-0 right-0 z-10 flex w-[46%] min-w-[320px] flex-col border-l border-stone-200 bg-white">
-      <div className="flex items-center justify-between border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
+    <aside className="animate-slide-in-right absolute inset-y-0 right-0 z-10 flex w-[46%] min-w-[300px] flex-col rounded-2xl border-l border-stone-200 bg-white overflow-hidden">
+      <div className="flex items-center justify-between border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-3 py-2.5">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-          <span className="text-sm font-semibold text-stone-800">Edit Entry</span>
+          <span className="text-xs font-semibold text-stone-800">Edit Entry</span>
         </div>
         <button
           onClick={onClose}
-          className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+          className="rounded-md p-1 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
           title="Close"
         >
-          <X size={14} />
+          <X size={13} />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="mb-4">
-          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+      <div className="flex-1 overflow-y-auto px-3 py-3">
+        <div className="mb-3">
+          <label className="mb-1 block text-[9px] font-semibold uppercase tracking-wide text-stone-400">
             Description
           </label>
           <textarea
             value={entry.description}
             onChange={(e) => onUpdate({ description: e.target.value })}
             rows={3}
-            className="w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm leading-relaxed text-stone-800 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
+            className="w-full resize-y rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs leading-relaxed text-stone-800 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
           />
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-2.5">
           <div className="flex items-center gap-1.5">
-            <Clock size={13} className="text-stone-400" />
+            <Clock size={12} className="text-stone-400" />
             <input
               type="number"
               min={0}
               value={entry.confirmedMinutes}
               onChange={(e) => onUpdate({ confirmedMinutes: Math.max(0, Number(e.target.value) || 0) })}
-              className="w-16 rounded-md border border-stone-200 bg-white px-2 py-1 text-center text-sm text-stone-700 outline-none focus:border-accent-500"
+              className="w-14 rounded-md border border-stone-200 bg-white px-2 py-1 text-center text-xs text-stone-700 outline-none focus:border-accent-500"
             />
-            <span className="text-xs text-stone-400">min</span>
+            <span className="text-[11px] text-stone-400">min</span>
           </div>
-          <label className="flex items-center gap-1.5 text-xs text-stone-600">
+          <label className="flex items-center gap-1.5 text-[11px] text-stone-600">
             <input
               type="checkbox"
               checked={entry.billable}
@@ -548,7 +556,7 @@ function EntryEditorPanel({
             Billable
           </label>
           {entry.activityType && (
-            <span className="rounded-md bg-accent-50 px-2 py-1 text-[11px] font-medium text-accent-700">
+            <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">
               {entry.activityType}
             </span>
           )}
@@ -556,22 +564,22 @@ function EntryEditorPanel({
 
         {sourceItems.length > 0 && (
           <div>
-            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-              <FileText size={12} className="text-accent-600" />
+            <div className="mb-1.5 flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wide text-stone-400">
+              <FileText size={11} className="text-accent-600" />
               Source signals
               <span className="font-normal text-stone-300">{sourceItems.length}</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {sourceItems.map((item) => {
                 const Icon = item.provider === 'calendar' ? CalendarDays : item.provider === 'browser' ? Globe : MousePointer2;
                 const context = signalContexts[item.id] ?? '';
                 return (
-                  <div key={item.id} className="rounded-lg border border-stone-100 bg-white p-3">
+                  <div key={item.id} className="rounded-lg border border-stone-100 bg-stone-50/50 p-2.5">
                     <div className="flex items-start gap-2">
-                      <Icon size={13} className="mt-0.5 shrink-0 text-stone-400" />
+                      <Icon size={12} className="mt-0.5 shrink-0 text-stone-400" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium text-stone-700">{item.summary}</p>
-                        <p className="mt-0.5 text-[10px] text-stone-400">
+                        <p className="text-[11px] font-medium text-stone-700">{item.summary}</p>
+                        <p className="mt-0.5 text-[9px] text-stone-400">
                           {item.provider} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           {item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}
                         </p>
@@ -586,7 +594,7 @@ function EntryEditorPanel({
                       }}
                       placeholder="Add context for this signal..."
                       rows={2}
-                      className="mt-2 w-full resize-y rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
+                      className="mt-1.5 w-full resize-y rounded-md border border-stone-200 bg-white px-2 py-1 text-[11px] text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
                     />
                   </div>
                 );
@@ -606,8 +614,8 @@ function GeneratingMessage() {
         <Sparkles size={12} className="text-accent-700" />
       </div>
       <div className="min-w-0">
-        <p className="text-xs font-semibold text-accent-900">Daykeeper</p>
-        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-accent-800">
+        <p className="text-[11px] font-semibold text-accent-900">Daykeeper</p>
+        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-accent-800">
           <span>Generating your timesheet</span>
           <span className="flex gap-0.5">
             {[0, 1, 2].map((i) => (
@@ -659,7 +667,7 @@ function EmptyState({
       <div className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors duration-200 ${iconBgClass}`}>
         <Briefcase size={20} className={`transition-colors duration-200 ${iconColorClass}`} />
       </div>
-      <p className="mt-3 text-sm text-stone-500">
+      <p className="mt-3 text-xs text-stone-500">
         {hasAssigned
           ? 'Generating preview...'
           : dropActive
@@ -667,7 +675,7 @@ function EmptyState({
             : 'No matters assigned yet.'}
       </p>
       {!hasAssigned && !dropActive && (
-        <p className="mt-1 text-xs text-stone-400">
+        <p className="mt-1 text-[11px] text-stone-400">
           Assign activity to matters on the left, or drag a signal here to pick a matter.
         </p>
       )}
