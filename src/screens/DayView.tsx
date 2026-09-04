@@ -1243,6 +1243,20 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
               onHoverEntry={(itemIds) => {
                 setHoveredEntryItemIds(itemIds ? new Set(itemIds) : new Set());
               }}
+              onConnectGroup={(itemIds) => {
+                // When signals are manually connected, check if any already has
+                // a matter assigned — if so, apply it to the whole group.
+                const existingMatter = itemIds
+                  .map((id) => manualOverrides.get(id))
+                  .find((v) => v !== undefined && v !== null);
+                if (existingMatter) {
+                  setManualOverrides((prev) => {
+                    const next = new Map(prev);
+                    for (const id of itemIds) next.set(id, existingMatter);
+                    return next;
+                  });
+                }
+              }}
             />
           ) : groupMode === 'matter' ? (
             <div className="flex gap-3">

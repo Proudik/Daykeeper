@@ -18,6 +18,8 @@ import {
   Briefcase,
   Plus,
   CheckCircle2,
+  Link2,
+  X,
 } from 'lucide-react';
 
 // ── Column definitions ────────────────────────────────────────────────────
@@ -225,6 +227,7 @@ interface CalendarBoardProps {
   onAssign: (itemId: string, matterId: string) => void;
   onDropGroup: (itemIds: string[], matterId: string) => void;
   onHoverEntry: (itemIds: string[] | null) => void;
+  onConnectGroup: (itemIds: string[]) => void;
 }
 
 const MIN_BLOCK_PX = 24;
@@ -246,10 +249,13 @@ export function CalendarBoard({
   onAssign: _onAssign,
   onDropGroup,
   onHoverEntry,
+  onConnectGroup,
 }: CalendarBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverMatter, setDragOverMatter] = useState<string | null>(null);
   const [hoveredBlock, setHoveredBlock] = useState<string | null>(null);
+  const [manualLinks, setManualLinks] = useState<Set<string>>(new Set());
+  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [hourPx, setHourPx] = useState(DEFAULT_HOUR_PX);
   const scrollRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -413,17 +419,22 @@ export function CalendarBoard({
     return conns;
   }, [allBlocks, displayStart, hourPx]);
 
-  // Build a map of block key → connected block keys (for group dragging)
+  // Build a map of block key → connected block keys (auto-overlap + manual links)
   const connectionMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
-    for (const conn of connections) {
-      if (!map.has(conn.fromKey)) map.set(conn.fromKey, new Set());
-      if (!map.has(conn.toKey)) map.set(conn.toKey, new Set());
-      map.get(conn.fromKey)!.add(conn.toKey);
-      map.get(conn.toKey)!.add(conn.fromKey);
+    const addLink = (a: string, b: string) => {
+      if (!map.has(a)) map.set(a, new Set());
+      if (!map.has(b)) map.set(b, new Set());
+      map.get(a)!.add(b);
+      map.get(b)!.add(a);
+    };
+    for (const conn of connections) addLink(conn.fromKey, conn.toKey);
+    for (const link of manualLinks) {
+      const [a, b] = link.split('::');
+      if (a && b) addLink(a, b);
     }
     return map;
-  }, [connections]);
+  }, [connections, manualLinks]);
 
   // Get all item IDs to drag when dragging a block (the block itself + all connected blocks)
   const getDragGroupIds = useCallback((block: PlacedBlock): string[] => {
@@ -437,6 +448,68 @@ export function CalendarBoard({
     }
     return Array.from(allIds);
   }, [connectionMap, allBlocks]);
+
+  // Manual link key helper
+  const linkKey = useCallback((a: string, b: string) => {
+    return [a, b].sort().join('::');
+  }, []);
+
+  // Start connecting from a block
+  const handleStartConnect = useCallback((e: React.MouseEvent, block: PlacedBlock) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setConnectingFrom(block.key);
+  }, []);
+
+  // Complete a manual connection by clicking a target block
+  const handleCompleteConnect = useCallback((block: PlacedBlock) => {
+    if (!connectingFrom) return;
+    if (connectingFrom === block.key) {
+      setConnectingFrom(null);
+      return;
+    }
+    const key = linkKey(connectingFrom, block.key);
+    setManualLinks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+    // Gather all item IDs in the now-connected group and notify parent
+    const connected = connectionMap.get(connectingFrom);
+    const groupKeys = new Set<string>([connectingFrom, block.key]);
+    if (connected) connected.forEach((k) => groupKeys.add(k));
+    const connFromLinks = new Set<string>([connectingFrom, block.key]);
+    // Also include items connected via auto-overlap
+    for (const k of groupKeys) {
+      const c = connectionMap.get(k);
+      if (c) c.forEach((ck) => connFromLinks.add(ck));
+    }
+    const allIds = new Set<string>();
+    for (const k of connFromLinks) {
+      const blk = allBlocks.find((b) => b.key === k);
+      if (blk) blk.itemIds.forEach((id) => allIds.add(id));
+    }
+    if (allIds.size > 1) {
+      onConnectGroup(Array.from(allIds));
+    }
+    setConnectingFrom(null);
+  }, [connectingFrom, linkKey, connectionMap, allBlocks, onConnectGroup]);
+
+  // Remove a manual link
+  const handleRemoveLink = useCallback((e: React.MouseEvent, a: string, b: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const key = linkKey(a, b);
+    setManualLinks((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  }, [linkKey]);
 
   // Hour markers
   const hours = useMemo(() => {
@@ -510,26 +583,38 @@ export function CalendarBoard({
     // Highlight from calendar hover (connection lines)
     const isConnected = hoveredConnections.size > 0 && hoveredConnections.has(block.key);
     const isHovered = hoveredBlock === block.key;
+    const isConnectingTarget = connectingFrom !== null && connectingFrom !== block.key;
+    const isConnectingSource = connectingFrom === block.key;
+    const hasManualLinks = Array.from(manualLinks).some((l) => l.includes(block.key));
     const width = Math.max(60, 100 / block.laneCount - 3);
     const left = (block.lane * 100) / block.laneCount + 1.5;
 
     return (
       <div
         key={block.key}
-        draggable
+        draggable={connectingFrom === null}
         onDragStart={(e) => handleDragStart(e, block)}
         onDragEnd={handleDragEnd}
+        onClick={() => {
+          if (connectingFrom !== null) handleCompleteConnect(block);
+        }}
         onMouseEnter={() => {
           setHoveredBlock(block.key);
         }}
         onMouseLeave={() => {
           setHoveredBlock(null);
         }}
-        className={`group absolute cursor-grab overflow-hidden rounded-md border text-left transition-all duration-150 ${
+        className={`group absolute overflow-hidden rounded-md border text-left transition-all duration-150 ${
+          connectingFrom !== null ? 'cursor-crosshair' : 'cursor-grab'
+        } ${
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           isConnected && !isHovered ? 'ring-2 ring-amber-300 ring-offset-1' : ''
-        } ${draggingId === block.key ? 'opacity-40' : ''} ${isHovered ? 'shadow-md z-10' : ''}`}
+        } ${isConnectingSource ? 'ring-2 ring-blue-500 ring-offset-1' : ''} ${
+          isConnectingTarget ? 'ring-2 ring-blue-300 ring-offset-1' : ''
+        } ${hasManualLinks ? 'ring-1 ring-blue-400' : ''} ${
+          draggingId === block.key ? 'opacity-40' : ''
+        } ${isHovered ? 'shadow-md z-10' : ''}`}
         style={{
           top: topPx,
           height: heightPx,
@@ -559,6 +644,16 @@ export function CalendarBoard({
           {block.isUsed && (
             <CheckCircle2 size={10} className="absolute right-1 top-1 text-emerald-600" />
           )}
+          {/* Connect button — appears on hover */}
+          {connectingFrom === null && (
+            <button
+              onClick={(e) => handleStartConnect(e, block)}
+              className="absolute right-1 bottom-1 opacity-0 group-hover:opacity-100 transition-opacity rounded bg-white/90 p-0.5 shadow-sm hover:bg-blue-50"
+              title="Connect to another signal"
+            >
+              <Link2 size={11} className="text-stone-500 hover:text-blue-600" />
+            </button>
+          )}
         </div>
       </div>
     );
@@ -567,16 +662,16 @@ export function CalendarBoard({
   // Column width in px (for SVG positioning)
   const colWidth = Math.max(80, (boardWidth - GUTTER_W) / COLUMNS.length);
 
-  // SVG overlay for connection lines
+  // SVG overlay for connection lines (auto-overlap + manual)
   const connectionLines = useMemo(() => {
-    return connections.map((conn, i) => {
+    const autoLines = connections.map((conn, i) => {
       const x1 = GUTTER_W + conn.fromCol * colWidth + colWidth - 2;
       const x2 = GUTTER_W + conn.toCol * colWidth + 2;
       const isHovered = hoveredConnections.size > 0 && (hoveredConnections.has(conn.fromKey) || hoveredConnections.has(conn.toKey));
       const midX = (x1 + x2) / 2;
       return (
         <path
-          key={i}
+          key={`auto-${i}`}
           d={`M ${x1} ${conn.y1} C ${midX} ${conn.y1}, ${midX} ${conn.y2}, ${x2} ${conn.y2}`}
           fill="none"
           stroke={isHovered ? '#f59e0b' : '#cbd5e1'}
@@ -587,10 +682,81 @@ export function CalendarBoard({
         />
       );
     });
-  }, [connections, hoveredConnections, colWidth, hourPx]);
+
+    // Manual link lines
+    const manualLines = Array.from(manualLinks).map((link) => {
+      const [keyA, keyB] = link.split('::');
+      const blkA = allBlocks.find((b) => b.key === keyA);
+      const blkB = allBlocks.find((b) => b.key === keyB);
+      if (!blkA || !blkB) return null;
+      const colA = COL_INDEX[blkA.column];
+      const colB = COL_INDEX[blkB.column];
+      const [fromBlk, toBlk, fromCol, toCol] = colA <= colB ? [blkA, blkB, colA, colB] : [blkB, blkA, colB, colA];
+      const y1 = ((fromBlk.startMin + fromBlk.endMin) / 2 - displayStart) / 60 * hourPx;
+      const y2 = ((toBlk.startMin + toBlk.endMin) / 2 - displayStart) / 60 * hourPx;
+      const x1 = GUTTER_W + fromCol * colWidth + colWidth - 2;
+      const x2 = GUTTER_W + toCol * colWidth + 2;
+      const midX = (x1 + x2) / 2;
+      const isHovered = hoveredConnections.size > 0 && (hoveredConnections.has(keyA) || hoveredConnections.has(keyB));
+      return (
+        <g key={`manual-${link}`}>
+          <path
+            d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+            fill="none"
+            stroke={isHovered ? '#f59e0b' : '#2563eb'}
+            strokeWidth={isHovered ? 2.5 : 2}
+            opacity={isHovered ? 1 : 0.7}
+            style={{ transition: 'stroke 0.15s, opacity 0.15s, stroke-width 0.15s' }}
+          />
+          {/* Remove button at midpoint */}
+          <circle
+            cx={midX}
+            cy={(y1 + y2) / 2}
+            r={7}
+            fill="white"
+            stroke={isHovered ? '#f59e0b' : '#2563eb'}
+            strokeWidth={1.5}
+            className="pointer-events-auto cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRemoveLink(e as unknown as React.MouseEvent, keyA, keyB);
+            }}
+          />
+          <text
+            x={midX}
+            y={(y1 + y2) / 2 + 3}
+            textAnchor="middle"
+            fontSize={9}
+            fill={isHovered ? '#f59e0b' : '#2563eb'}
+            className="pointer-events-none select-none"
+          >
+            ×
+          </text>
+        </g>
+      );
+    }).filter(Boolean);
+
+    return [...autoLines, ...manualLines];
+  }, [connections, manualLinks, allBlocks, hoveredConnections, colWidth, hourPx, displayStart, hoveredBlock, handleRemoveLink]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      {/* Connecting mode banner */}
+      {connectingFrom !== null && (
+        <div className="shrink-0 flex items-center justify-between gap-2 bg-blue-50 border-b border-blue-200 px-4 py-2">
+          <div className="flex items-center gap-2 text-xs text-blue-700">
+            <Link2 size={14} />
+            <span className="font-medium">Click another signal to connect them</span>
+          </div>
+          <button
+            onClick={() => setConnectingFrom(null)}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-blue-600 hover:bg-blue-100"
+          >
+            <X size={12} />
+            Cancel
+          </button>
+        </div>
+      )}
       {/* Calendar board — scrollable */}
       <div ref={scrollRef} className="flex-1 overflow-auto" onWheel={handleWheel}>
         <div ref={boardRef} className="relative flex gap-0" style={{ minHeight: totalPx + 40 }}>
