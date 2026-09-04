@@ -21,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: { componentStack?: string }): void {
-    const detail = `${error.message}\n\n${info.componentStack ?? error.stack ?? ''}`;
+    const detail = `${error.message}\n\nJS Stack:\n${error.stack ?? '(none)'}\n\nReact Component Stack:\n${info.componentStack ?? '(none)'}`;
     logCrash(error.message, detail);
   }
 

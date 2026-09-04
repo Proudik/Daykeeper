@@ -85,7 +85,7 @@ export function resolveSessions(
 
   // Email address → MatterContactEntry[]
   const contactsByEmail = new Map<string, { matterId: string; role: 'contact' | 'adversary'; contact: ContactIndexEntry }[]>();
-  for (const mc of ctx.matterContacts) {
+  for (const mc of ctx.matterContacts ?? []) {
     const contact = ctx.contacts.find((c) => c.external_id === mc.contact_external_id);
     if (!contact) continue;
     for (const email of contact.emails) {
@@ -108,7 +108,7 @@ export function resolveSessions(
 
   // Client primary_domain → client_external_id (from matters)
   const domainToClient = new Map<string, string>();
-  for (const matter of ctx.matters) {
+  for (const matter of ctx.matters ?? []) {
     // We don't have Client records here, but Matter has client_external_id.
     // The domain→client mapping is built from the emailLookup's byDomain index
     // cross-referenced with matters. For the resolver, we use the emailLookup
@@ -117,7 +117,7 @@ export function resolveSessions(
 
   // Rules keyed by type:value
   const rulesByKey = new Map<string, MatterRule[]>();
-  for (const rule of ctx.matterRules) {
+  for (const rule of ctx.matterRules ?? []) {
     const key = `${rule.rule_type}:${rule.value.toLowerCase()}`;
     const list = rulesByKey.get(key) ?? [];
     list.push(rule);
@@ -248,14 +248,14 @@ function scoreOneSession(
   // Also include the session label and absorbed labels — these survive even
   // when overlap resolution absorbs the email into a higher-priority session.
   searchTexts.push(normalizeText(entry.label));
-  for (const absorbed of entry.absorbed) {
+  for (const absorbed of entry.absorbed ?? []) {
     searchTexts.push(normalizeText(absorbed.label));
   }
 
   // --- Score every matter ---
   const candidateMap = new Map<string, { score: number; reasons: string[] }>();
 
-  for (const matter of ctx.matters) {
+  for (const matter of ctx.matters ?? []) {
     const signals: { score: number; reason: string }[] = [];
 
     // Signal: document path in matter's known folder

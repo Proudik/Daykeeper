@@ -54,7 +54,7 @@ export function attributeEntries(
   }
 
   const rulesByKey = new Map<string, MatterRule[]>();
-  for (const rule of ctx.matterRules) {
+  for (const rule of ctx.matterRules ?? []) {
     const key = `${rule.rule_type}:${rule.value.toLowerCase()}`;
     const list = rulesByKey.get(key) ?? [];
     list.push(rule);

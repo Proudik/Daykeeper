@@ -77,7 +77,7 @@ function applyManualOverrides(
     const entry = entryById.get(s.sessionId);
     if (!entry) return s;
     let override: string | null | undefined = undefined;
-    for (const itemId of entry.sourceItemIds) {
+    for (const itemId of entry.sourceItemIds ?? []) {
       if (overrides.has(itemId)) {
         override = overrides.get(itemId);
         break;
@@ -531,7 +531,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   }, [selectedItems, profile?.timezone]);
 
   const generatedItemIds = useMemo(
-    () => new Set((draftEntries ?? []).flatMap((entry) => entry.sourceItemIds)),
+    () => new Set((draftEntries ?? []).flatMap((entry) => entry.sourceItemIds ?? [])),
     [draftEntries],
   );
 
