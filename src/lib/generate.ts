@@ -167,22 +167,23 @@ export async function generateDraftEntries(
   }
 
   const aiEntries = response.entries ?? [];
-  const allEntries: DraftTimesheetEntry[] = aiEntries.map((ai: AIEntry, idx: number) => {
-    // Expand merged session ids back to all original session ids
+  const coveredSessionIds = new Set<string>();
+  const allEntries: DraftTimesheetEntry[] = aiEntries.flatMap((ai: AIEntry, idx: number) => {
     const allSessionIds = (ai.source_session_ids ?? []).flatMap((sid: string) =>
       mergedGroupByFirstId.get(sid) ?? [sid]);
     const sourceEntries = allSessionIds
       .map((sid: string) => entryBySessionId.get(sid))
       .filter((e): e is EstimatedEntry => e !== undefined);
+    if (sourceEntries.length === 0) return [];
+
+    for (const entry of sourceEntries) coveredSessionIds.add(entry.id);
     const totalMinutes = sourceEntries.reduce((s: number, e: EstimatedEntry) => s + e.roundedMinutes, 0);
     const sourceItemIds = sourceEntries.flatMap((e: EstimatedEntry) => e.sourceItemIds);
     const confidence = sourceEntries.every((e: EstimatedEntry) => e.confidence === 'high')
       ? 'high' : sourceEntries.some((e: EstimatedEntry) => e.confidence === 'low') ? 'low' : 'medium';
+    const session = assignedSessions.find((s) => sourceEntries.some((e) => e.id === s.sessionId));
 
-    const matterId = ai.matter_id ?? null;
-    const session = assignedSessions.find((s) => allSessionIds.includes(s.sessionId));
-
-    return {
+    return [{
       id: `draft-${idx}`,
       description: ai.description,
       suggestedMinutes: totalMinutes,
@@ -192,22 +193,20 @@ export async function generateDraftEntries(
       confidence,
       sourceSummary: sourceEntries.map((e: EstimatedEntry) => `${e.provider} ${e.roundedMinutes}min`).join(", "),
       sourceItemIds,
-      matterId,
+      matterId: session?.matterId ?? ai.matter_id ?? null,
       matterConfidence: (session?.confidence ?? 'high') as DraftTimesheetEntry['matterConfidence'],
       matterReason: session?.reason ?? null,
       attributionSource: 'estimator' as const,
       manualEntryId: null,
-    } satisfies DraftTimesheetEntry;
+    } satisfies DraftTimesheetEntry];
   });
 
-  // Find assigned matters the AI omitted — create fallback entries for them
-  // so no assigned session is silently dropped from the timesheet.
-  const coveredMatterIds = new Set(allEntries.map((e) => e.matterId));
-  const missedMatters = Array.from(sessionsByMatter.entries()).filter(
-    ([matterId]) => !coveredMatterIds.has(matterId),
-  );
-  for (const [matterId, group] of missedMatters) {
-    const entries = group
+  // Preserve every assigned session if the AI omitted or misidentified it.
+  for (const [matterId, group] of sessionsByMatter) {
+    const missed = group.filter((session) => !coveredSessionIds.has(session.sessionId));
+    if (missed.length === 0) continue;
+
+    const entries = missed
       .map((s) => entryBySessionId.get(s.sessionId))
       .filter((e): e is EstimatedEntry => e !== undefined);
     const allSourceItemIds = entries.flatMap((e) => e.sourceItemIds);
@@ -219,7 +218,7 @@ export async function generateDraftEntries(
     const confidence = entries.every((e) => e.confidence === 'high') ? 'high' : entries.some((e) => e.confidence === 'low') ? 'low' : 'medium';
 
     allEntries.push({
-      id: `fallback-${matterId}`,
+      id: `fallback-${matterId}-${entries[0]?.id ?? 'session'}`,
       description,
       suggestedMinutes: totalMinutes,
       confirmedMinutes: totalMinutes,

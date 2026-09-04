@@ -666,10 +666,11 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   // Items available for generation (excluding duplicates the user hasn't overridden)
   const generationItems = useMemo(() => {
     return visibleSelectedItems.filter((item) => {
+      if (manualOverrides.has(item.id)) return true;
       if (!duplicateItemIds.has(item.id)) return true;
       return overriddenDuplicates.has(item.id);
     });
-  }, [visibleSelectedItems, duplicateItemIds, overriddenDuplicates]);
+  }, [visibleSelectedItems, duplicateItemIds, overriddenDuplicates, manualOverrides]);
 
   function toggleDuplicateOverride(itemId: string) {
     setOverriddenDuplicates((prev) => {
@@ -1375,7 +1376,7 @@ function RecentCasesBar({
             >
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: MATTER_PALETTE[bucketMatters.indexOf(matter) % MATTER_PALETTE.length] }}
+                style={{ backgroundColor: MATTER_PALETTE[matters.indexOf(matter) % MATTER_PALETTE.length] }}
               />
               <div className="min-w-0">
                 <p className="truncate text-xs font-semibold text-stone-700">
