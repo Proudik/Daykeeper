@@ -132,14 +132,15 @@ function aggregateBrowser(items: ActivityItem[], timezone?: string): AggregatedG
     );
     const domains = new Set(blockItems.map((i) => i.meta.fileName ?? i.summary));
     const topDomains = Array.from(domains).slice(0, 3);
-    const blockEnd = blockStart + BLOCK_SIZE;
+    const earliestMin = timestampToMinutes(blockItems[0].timestamp, timezone);
+    const endMin = earliestMin + Math.max(totalMinutes, 15);
     groups.push({
       key: `browser-${blockStart}`,
       label: topDomains.length > 0 ? topDomains.join(', ') : 'Browsing',
       subLabel: `${blockItems.length} ${blockItems.length === 1 ? 'site' : 'sites'} · ${formatMinutes(totalMinutes)}`,
       itemCount: blockItems.length,
-      startMin: blockStart,
-      endMin: Math.min(blockEnd, blockStart + Math.max(totalMinutes, 30)),
+      startMin: earliestMin,
+      endMin: Math.max(endMin, earliestMin + 30),
       totalMinutes,
       itemIds: blockItems.map((i) => i.id),
     });
@@ -237,11 +238,10 @@ export function CalendarBoard({
     });
   }, []);
 
-  const startMin = parseHHmm(workStart);
-  const endMin = Math.max(parseHHmm(workEnd), startMin + 60);
-  const displayStart = Math.floor(startMin / 60) * 60;
-  const displayEnd = Math.ceil(endMin / 60) * 60;
-  const totalPx = ((displayEnd - displayStart) / 60) * hourPx + 8;
+  const workStartMin = parseHHmm(workStart);
+  const workEndMin = Math.max(parseHHmm(workEnd), workStartMin + 60);
+  const baseDisplayStart = Math.floor(workStartMin / 60) * 60;
+  const baseDisplayEnd = Math.ceil(workEndMin / 60) * 60;
 
   // Build column data
   const columns = useMemo(() => {
@@ -334,6 +334,21 @@ export function CalendarBoard({
 
     return result;
   }, [items, timezone, usedItemIds, generatedItemIds]);
+
+  // Extend the display range to include all items so signals outside
+  // working hours are still visible on the grid.
+  const { displayStart, displayEnd } = useMemo(() => {
+    let start = baseDisplayStart;
+    let end = baseDisplayEnd;
+    for (const col of COLUMNS) {
+      for (const block of columns[col.key]) {
+        if (block.startMin < start) start = Math.floor(block.startMin / 60) * 60;
+        if (block.endMin > end) end = Math.ceil(block.endMin / 60) * 60;
+      }
+    }
+    return { displayStart: start, displayEnd: end };
+  }, [columns, baseDisplayStart, baseDisplayEnd]);
+  const totalPx = ((displayEnd - displayStart) / 60) * hourPx + 8;
 
   // All blocks flat
   const allBlocks = useMemo(() => {
