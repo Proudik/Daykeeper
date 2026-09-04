@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
 import type { DragEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { ActivityItem, DraftTimesheetEntry, Matter } from '@/types';
@@ -14,13 +14,13 @@ import {
   AlertCircle,
   Sparkles,
   FileDown,
-  Maximize2,
   X,
   FileText,
   Globe,
   CalendarDays,
   MousePointer2,
   FolderOpen,
+  ChevronLeft,
 } from 'lucide-react';
 
 interface TimesheetPanelProps {
@@ -74,7 +74,7 @@ export function TimesheetPanel({
   hasAssignedSessions,
   lastDropMatterId,
 }: TimesheetPanelProps) {
-  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -82,7 +82,6 @@ export function TimesheetPanel({
   const [emptyDropActive, setEmptyDropActive] = useState(false);
   const [matterDropActive, setMatterDropActive] = useState(false);
   const [signalContexts, setSignalContexts] = useState<Record<string, string>>({});
-  const [isReviewMode, setIsReviewMode] = useState(false);
 
   useEffect(() => {
     if (lastDropMatterId) {
@@ -91,15 +90,6 @@ export function TimesheetPanel({
       return () => clearTimeout(t);
     }
   }, [lastDropMatterId]);
-
-  useEffect(() => {
-    if (!isReviewMode) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsReviewMode(false);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isReviewMode]);
 
   const matterColorMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -130,15 +120,6 @@ export function TimesheetPanel({
       : totalBillableMinutes < targetMinutes
         ? '#f59e0b'
         : '#0d9488';
-
-  function toggleEntry(id: string) {
-    setExpandedEntries((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   function updateEntry(id: string, patch: Partial<DraftTimesheetEntry>) {
     onEntriesChange(entries.map((e) => (e.id === id ? { ...e, ...patch } : e)));
@@ -176,70 +157,18 @@ export function TimesheetPanel({
     }
   }, [entries.length]);
 
+  // Close flyout on Escape
+  useEffect(() => {
+    if (!expandedEntryId) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpandedEntryId(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [expandedEntryId]);
+
   return (
-    <>
-      {isReviewMode && createPortal(
-        <>
-          <button
-            type="button"
-            aria-label="Close focused timesheet preview"
-            onClick={() => setIsReviewMode(false)}
-            className="animate-fade-in fixed inset-0 z-[100] cursor-default bg-stone-950/20 backdrop-blur-[1px]"
-          />
-          <div
-            className="animate-slide-in-right fixed inset-y-3 right-3 z-[101] flex max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-2xl shadow-stone-400/40"
-            style={{ width: 'min(78vw, 1080px)' }}
-          >
-            <ReviewPanelContent
-              entries={entries}
-              items={items}
-              matters={matters}
-              matterColorMap={matterColorMap}
-              matterGroups={matterGroups}
-              totalMinutes={totalMinutes}
-              totalBillableMinutes={totalBillableMinutes}
-              targetMinutes={targetMinutes}
-              progressPct={progressPct}
-              barColor={barColor}
-              existingRecordedMinutes={existingRecordedMinutes}
-              generating={generating}
-              generationErrors={generationErrors}
-              saving={saving}
-              saveError={saveError}
-              saveSuccess={saveSuccess}
-              expandedEntries={expandedEntries}
-              signalContexts={signalContexts}
-              dropFlash={dropFlash}
-              dropTarget={dropTarget}
-              emptyDropActive={emptyDropActive}
-              matterDropActive={matterDropActive}
-              hasAssignedSessions={hasAssignedSessions}
-              lastDropMatterId={lastDropMatterId}
-              onToggleEntry={toggleEntry}
-              onUpdateEntry={updateEntry}
-              onSetSignalContexts={setSignalContexts}
-              onSave={() => onSave(entries)}
-              onRegenerate={onRegenerate}
-              onClose={() => setIsReviewMode(false)}
-              onCopyAll={copyAll}
-              onDropSignal={onDropSignal}
-              onDropToEmpty={onDropToEmpty}
-              onDropMatter={onDropMatter}
-              onHoverEntry={onHoverEntry}
-              onSetDropTarget={setDropTarget}
-              onSetEmptyDropActive={setEmptyDropActive}
-              onSetMatterDropActive={setMatterDropActive}
-              onHandleMatterDrop={handleMatterDrop}
-              onHandleWholeMatterDrop={handleWholeMatterDrop}
-              scrollRef={scrollRef}
-            />
-          </div>
-        </>,
-        document.body,
-      )}
-      <div
-        className="relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30"
-      >
+    <div className="relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30">
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
         <div className="flex items-center justify-between">
@@ -257,16 +186,6 @@ export function TimesheetPanel({
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            {entries.length > 0 && (
-              <button
-                onClick={() => setIsReviewMode(true)}
-                className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
-                title="Open focused preview"
-                aria-label="Open focused preview"
-              >
-                <Maximize2 size={14} />
-              </button>
-            )}
             <button
               onClick={copyAll}
               disabled={entries.length === 0}
@@ -348,7 +267,7 @@ export function TimesheetPanel({
                   }`}
                   style={{ animation: 'fadeInUp 0.3s ease-out both' }}
                 >
-                  {/* Matter header — no arrows, always expanded */}
+                  {/* Matter header */}
                   <div className="flex w-full items-center gap-2 px-3 py-2.5">
                     <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                     <div className="min-w-0 flex-1">
@@ -370,7 +289,7 @@ export function TimesheetPanel({
                     </span>
                   </div>
 
-                  {/* Entries — always visible, each individually expandable */}
+                  {/* Entries — each individually expandable to the left */}
                   <div className="divide-y divide-stone-100 border-t border-stone-100">
                     {groupEntries.map((entry, i) => (
                       <div
@@ -383,12 +302,14 @@ export function TimesheetPanel({
                           entry={entry}
                           items={items}
                           color={color}
-                          isExpanded={expandedEntries.has(entry.id)}
-                          onToggle={() => toggleEntry(entry.id)}
+                          isExpanded={expandedEntryId === entry.id}
+                          onToggle={() =>
+                            setExpandedEntryId((prev) => (prev === entry.id ? null : entry.id))
+                          }
                           onUpdate={(patch) => updateEntry(entry.id, patch)}
                           signalContexts={signalContexts}
                           setSignalContexts={setSignalContexts}
-                          spacious={false}
+                          onClose={() => setExpandedEntryId(null)}
                         />
                       </div>
                     ))}
@@ -467,334 +388,8 @@ export function TimesheetPanel({
                 Draft: <span className="font-semibold text-stone-800">{formatMinutes(totalMinutes)}</span>
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsReviewMode(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50"
-              >
-                <Maximize2 size={13} />
-                Review
-              </button>
-              <button
-                onClick={() => onSave(entries)}
-                disabled={saving}
-                className={`btn-primary text-sm ${saving ? 'progress-shimmer' : ''}`}
-              >
-              {saving ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin-slow" />
-                  Saving...
-                </span>
-              ) : saveSuccess ? (
-                <span className="flex items-center gap-2">
-                  <CheckCircle2 size={14} />
-                  Saved
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Save size={14} />
-                  Save timesheet
-                </span>
-              )}
-            </button>
-          </div>
-          {saveError && (
-            <div className="mt-2 flex items-center gap-2 rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700">
-              <AlertCircle size={12} />
-              {saveError}
-            </div>
-          )}
-        </div>
-        </div>
-      )}
-      </div>
-    </>
-  );
-}
-
-function ReviewPanelContent({
-  entries, items, matters, matterColorMap, matterGroups,
-  totalMinutes, totalBillableMinutes, targetMinutes, progressPct, barColor,
-  existingRecordedMinutes, generating, generationErrors, saving, saveError, saveSuccess,
-  expandedEntries, signalContexts, dropFlash, dropTarget,
-  emptyDropActive, matterDropActive, hasAssignedSessions, lastDropMatterId,
-  onToggleEntry, onUpdateEntry, onSetSignalContexts, onSave, onRegenerate, onClose,
-  onCopyAll, onDropSignal, onDropToEmpty, onDropMatter, onHoverEntry,
-  onSetDropTarget, onSetEmptyDropActive, onSetMatterDropActive,
-  onHandleMatterDrop, onHandleWholeMatterDrop, scrollRef,
-}: {
-  entries: DraftTimesheetEntry[];
-  items: ActivityItem[];
-  matters: Matter[];
-  matterColorMap: Map<string, string>;
-  matterGroups: Map<string, DraftTimesheetEntry[]>;
-  totalMinutes: number;
-  totalBillableMinutes: number;
-  targetMinutes: number;
-  progressPct: number;
-  barColor: string;
-  existingRecordedMinutes: number;
-  generating: boolean;
-  generationErrors: string[];
-  saving: boolean;
-  saveError: string | null;
-  saveSuccess: boolean;
-  expandedEntries: Set<string>;
-  signalContexts: Record<string, string>;
-  dropFlash: string | null;
-  dropTarget: string | null;
-  emptyDropActive: boolean;
-  matterDropActive: boolean;
-  hasAssignedSessions: boolean;
-  lastDropMatterId: string | null;
-  onToggleEntry: (id: string) => void;
-  onUpdateEntry: (id: string, patch: Partial<DraftTimesheetEntry>) => void;
-  onSetSignalContexts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  onSave: () => void;
-  onRegenerate: () => void;
-  onClose: () => void;
-  onCopyAll: () => void;
-  onDropSignal: (itemId: string, matterId: string) => void;
-  onDropToEmpty?: (itemId: string) => void;
-  onDropMatter?: (matterId: string) => void;
-  onHoverEntry?: (itemIds: string[] | null) => void;
-  onSetDropTarget: (id: string | null) => void;
-  onSetEmptyDropActive: (active: boolean) => void;
-  onSetMatterDropActive: (active: boolean) => void;
-  onHandleMatterDrop: (event: DragEvent<HTMLDivElement>, matterId: string) => void;
-  onHandleWholeMatterDrop: (event: DragEvent<HTMLDivElement>) => void;
-  scrollRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  return (
-    <>
-      {/* Header */}
-      <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-100">
-              <Sparkles size={16} className="text-accent-700" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-stone-800">Timesheet Review</h3>
-              <p className="text-xs text-stone-400">
-                {hasAssignedSessions
-                  ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} · ${formatMinutes(totalMinutes)}`
-                  : 'Assign matters to generate'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
             <button
-              onClick={onCopyAll}
-              disabled={entries.length === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50 disabled:opacity-30"
-              title="Copy as text"
-            >
-              <FileDown size={13} />
-              Copy
-            </button>
-            <button
-              onClick={onRegenerate}
-              disabled={generating || !hasAssignedSessions}
-              className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50 disabled:opacity-30"
-              title="Regenerate"
-            >
-              <RefreshCw size={13} className={generating ? 'animate-spin-slow' : ''} />
-              Regenerate
-            </button>
-            <button
-              onClick={onClose}
-              className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 transition-all hover:border-stone-300 hover:bg-stone-50"
-              title="Close (Esc)"
-            >
-              <X size={13} />
-              Close
-            </button>
-          </div>
-        </div>
-
-        {/* Progress bar */}
-        {entries.length > 0 && (
-          <div className="mt-3">
-            <div className="flex items-center justify-between text-xs text-stone-500">
-              <span>{formatMinutes(totalBillableMinutes)} of {formatHours(targetMinutes)}</span>
-              <span>{Math.round(progressPct)}%</span>
-            </div>
-            <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-stone-200">
-              <div
-                className="h-full rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${progressPct}%`, backgroundColor: barColor }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5">
-        {generating && <GeneratingMessage />}
-        {generationErrors.length > 0 ? (
-          <div className="space-y-2">
-            {generationErrors.map((err, i) => (
-              <div key={i} className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
-                <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                <span>{err}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {Array.from(matterGroups.entries()).map(([matterKey, groupEntries]) => {
-              const matter = matters.find((m) => m.id === matterKey);
-              const color = matter ? matterColorMap.get(matter.id) ?? '#78716c' : '#d97706';
-              const groupMinutes = groupEntries.reduce((s, e) => s + e.confirmedMinutes, 0);
-              const isCardGenerating = generating && lastDropMatterId === matterKey;
-              const isDropFlash = dropFlash === matterKey && !isCardGenerating;
-
-              return (
-                <div
-                  key={matterKey}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = 'move';
-                  }}
-                  onDragEnter={() => matter && onSetDropTarget(matter.id)}
-                  onDragLeave={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                      onSetDropTarget(null);
-                    }
-                  }}
-                  onDrop={(event) => matter && onHandleMatterDrop(event, matter.id)}
-                  className={`overflow-hidden rounded-xl border shadow-sm transition-all duration-200 ${
-                    dropTarget === matter?.id
-                      ? 'border-accent-300 bg-accent-50/50 ring-2 ring-inset ring-accent-300'
-                      : isDropFlash
-                        ? 'border-accent-200 bg-accent-50/30 drop-pulse'
-                        : 'border-stone-200 bg-white'
-                  }`}
-                  style={{ animation: 'fadeInUp 0.3s ease-out both' }}
-                >
-                  {/* Matter header */}
-                  <div className="flex w-full items-center gap-2.5 px-4 py-3.5">
-                    <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-base font-semibold text-stone-800">
-                        {matter?.case_id_visible ?? matter?.name ?? 'Unassigned'}
-                      </span>
-                      {matter && (
-                        <span className="block truncate text-xs text-stone-400">{matter.name}</span>
-                      )}
-                    </div>
-                    {isCardGenerating && (
-                      <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-accent-700">
-                        <Loader2 size={12} className="animate-spin-slow" />
-                        Generating
-                      </span>
-                    )}
-                    <span className="shrink-0 text-sm font-medium text-stone-600">
-                      {formatMinutes(groupMinutes)}
-                    </span>
-                  </div>
-
-                  {/* Entries */}
-                  <div className="divide-y divide-stone-100 border-t border-stone-100">
-                    {groupEntries.map((entry, i) => (
-                      <div
-                        key={entry.id}
-                        style={{ animation: `fadeInUp 0.3s ease-out ${i * 60}ms both` }}
-                        onMouseEnter={() => onHoverEntry?.(entry.sourceItemIds ?? null)}
-                        onMouseLeave={() => onHoverEntry?.(null)}
-                      >
-                        <ExpandableEntryRow
-                          entry={entry}
-                          items={items}
-                          color={color}
-                          isExpanded={expandedEntries.has(entry.id)}
-                          onToggle={() => onToggleEntry(entry.id)}
-                          onUpdate={(patch) => onUpdateEntry(entry.id, patch)}
-                          signalContexts={signalContexts}
-                          setSignalContexts={onSetSignalContexts}
-                          spacious
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Drop zone for dragging a whole case */}
-        {onDropMatter && !generating && (
-          <div
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = 'copy';
-              if (!matterDropActive) onSetMatterDropActive(true);
-            }}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                onSetMatterDropActive(false);
-              }
-            }}
-            onDrop={onHandleWholeMatterDrop}
-            className={`mb-2 mt-3 flex items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-2.5 text-center transition-all duration-200 ${
-              matterDropActive
-                ? 'border-accent-400 bg-accent-50/60 scale-[1.01]'
-                : 'border-stone-200 bg-stone-50/40'
-            }`}
-          >
-            <FolderOpen size={15} className={matterDropActive ? 'text-accent-600' : 'text-stone-300'} />
-            <p className={`text-xs ${matterDropActive ? 'text-accent-700' : 'text-stone-400'}`}>
-              {matterDropActive ? 'Drop case to generate timesheet' : 'Drag a case here to add all its signals'}
-            </p>
-          </div>
-        )}
-
-        {/* Persistent drop zone for unassigned signals */}
-        {!generating && generationErrors.length === 0 && (
-          <div
-            onDragOver={(event) => {
-              if (!onDropToEmpty) return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = 'move';
-            }}
-            onDragEnter={() => onDropToEmpty && onSetEmptyDropActive(true)}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                onSetEmptyDropActive(false);
-              }
-            }}
-            onDrop={(event) => {
-              if (!onDropToEmpty) return;
-              event.preventDefault();
-              const itemId = event.dataTransfer.getData('text/daykeeper-item');
-              onSetEmptyDropActive(false);
-              if (itemId) onDropToEmpty(itemId);
-            }}
-          >
-            <EmptyState hasAssigned={hasAssignedSessions} dropActive={emptyDropActive} compact={entries.length > 0} />
-          </div>
-        )}
-      </div>
-
-      {/* Footer */}
-      {entries.length > 0 && (
-        <div className="shrink-0 border-t border-stone-200 bg-gradient-to-b from-white to-stone-50 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-stone-500">
-              {existingRecordedMinutes > 0 && (
-                <span className="text-stone-400">
-                  Already recorded: {formatMinutes(existingRecordedMinutes)} ·{' '}
-                </span>
-              )}
-              <span>
-                Draft: <span className="text-base font-semibold text-stone-800">{formatMinutes(totalMinutes)}</span>
-              </span>
-            </div>
-            <button
-              onClick={onSave}
+              onClick={() => onSave(entries)}
               disabled={saving}
               className={`btn-primary text-sm ${saving ? 'progress-shimmer' : ''}`}
             >
@@ -824,7 +419,7 @@ function ReviewPanelContent({
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -837,7 +432,7 @@ function ExpandableEntryRow({
   onUpdate,
   signalContexts,
   setSignalContexts,
-  spacious = false,
+  onClose,
 }: {
   entry: DraftTimesheetEntry;
   items: ActivityItem[];
@@ -847,18 +442,44 @@ function ExpandableEntryRow({
   onUpdate: (patch: Partial<DraftTimesheetEntry>) => void;
   signalContexts: Record<string, string>;
   setSignalContexts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  spacious?: boolean;
+  onClose: () => void;
 }) {
   const sourceItems = (entry.sourceItemIds ?? [])
     .map((id) => items.find((item) => item.id === id))
     .filter((item): item is ActivityItem => Boolean(item));
 
+  const rowRef = useRef<HTMLButtonElement>(null);
+  const [flyoutStyle, setFlyoutStyle] = useState<React.CSSProperties>({});
+
+  useLayoutEffect(() => {
+    if (!isExpanded || !rowRef.current) return;
+    const rect = rowRef.current.getBoundingClientRect();
+    const flyoutWidth = 480;
+    const gap = 12;
+    // Position the flyout to the left of the panel, aligned with the row
+    const right = window.innerWidth - rect.left + gap;
+    const maxRight = window.innerWidth - 24;
+    const clampedRight = Math.min(right, maxRight);
+    const top = Math.max(12, rect.top - 8);
+    setFlyoutStyle({
+      position: 'fixed',
+      top,
+      right: clampedRight,
+      width: flyoutWidth,
+      maxWidth: window.innerWidth - rect.width - gap - 16,
+      zIndex: 9999,
+    });
+  }, [isExpanded]);
+
   return (
     <div className="transition-colors duration-150">
       {/* Collapsed view — click to expand */}
       <button
+        ref={rowRef}
         onClick={onToggle}
-        className={`flex w-full items-start gap-2 ${spacious ? 'px-4 py-3.5' : 'px-3 py-2.5'} text-left transition-colors hover:bg-stone-50`}
+        className={`flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-stone-50 ${
+          isExpanded ? 'bg-accent-50/40 ring-1 ring-inset ring-accent-200' : ''
+        }`}
       >
         <div className="mt-1.5 h-1 w-1 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <div className="min-w-0 flex-1">
@@ -880,104 +501,138 @@ function ExpandableEntryRow({
                 Non-billable
               </span>
             )}
-            <span className="ml-auto text-[10px] text-stone-300">
-              {isExpanded ? 'Click to collapse' : 'Click to expand'}
+            <span className="ml-auto flex items-center gap-0.5 text-[10px] text-stone-300">
+              <ChevronLeft size={11} />
+              {isExpanded ? 'Close' : 'Edit'}
             </span>
           </div>
         </div>
       </button>
 
-      {/* Expanded view — fine-tuning options */}
-      {isExpanded && (
-        <div className={`border-t border-stone-100 bg-stone-50/60 ${spacious ? 'grid grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]' : 'px-3 py-3'} animate-fade-in`}>
-          {/* Description */}
-          <div className="mb-3">
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-              Description
-            </label>
-            <textarea
-              value={entry.description}
-              onChange={(e) => onUpdate({ description: e.target.value })}
-              rows={2}
-              className="w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm leading-relaxed text-stone-800 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
-            />
-          </div>
-
-          {/* Minutes + Billable + Activity type */}
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <Clock size={13} className="text-stone-400" />
-              <input
-                type="number"
-                min={0}
-                value={entry.confirmedMinutes}
-                onChange={(e) => onUpdate({ confirmedMinutes: Math.max(0, Number(e.target.value) || 0) })}
-                className="w-16 rounded-md border border-stone-200 bg-white px-2 py-1 text-center text-sm text-stone-700 outline-none focus:border-accent-500"
-              />
-              <span className="text-xs text-stone-400">min</span>
+      {/* Left-expanding flyout — portaled to body to escape overflow/transform */}
+      {isExpanded && flyoutStyle.position && createPortal(
+        <>
+          {/* Click-away catcher */}
+          <button
+            type="button"
+            aria-label="Close entry editor"
+            onClick={onClose}
+            className="fixed inset-0 cursor-default bg-transparent"
+            style={{ zIndex: 9998 }}
+          />
+          {/* Flyout panel */}
+          <div
+            style={flyoutStyle}
+            className="animate-slide-in-right flex flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl shadow-stone-400/40"
+          >
+            {/* Flyout header */}
+            <div className="flex items-center justify-between border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+                <span className="text-sm font-semibold text-stone-800">Edit Entry</span>
+              </div>
+              <button
+                onClick={onClose}
+                className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+                title="Close (Esc)"
+              >
+                <X size={14} />
+              </button>
             </div>
 
-            <label className="flex items-center gap-1.5 text-xs text-stone-600">
-              <input
-                type="checkbox"
-                checked={entry.billable}
-                onChange={(e) => onUpdate({ billable: e.target.checked })}
-                className="rounded accent-accent-600"
-              />
-              Billable
-            </label>
-
-            {entry.activityType && (
-              <span className="rounded-md bg-accent-50 px-2 py-1 text-[11px] font-medium text-accent-700">
-                {entry.activityType}
-              </span>
-            )}
-          </div>
-
-          {/* Source signals */}
-          {sourceItems.length > 0 && (
-            <div className={spacious ? 'lg:col-start-2 lg:row-span-2' : ''}>
-              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-                <FileText size={12} className="text-accent-600" />
-                Source signals
-                <span className="font-normal text-stone-300">{sourceItems.length}</span>
+            {/* Flyout body */}
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              {/* Description */}
+              <div className="mb-4">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                  Description
+                </label>
+                <textarea
+                  value={entry.description}
+                  onChange={(e) => onUpdate({ description: e.target.value })}
+                  rows={3}
+                  className="w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm leading-relaxed text-stone-800 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
+                />
               </div>
-              <div className="space-y-1.5">
-                {sourceItems.map((item) => {
-                  const Icon = item.provider === 'calendar' ? CalendarDays : item.provider === 'browser' ? Globe : MousePointer2;
-                  const context = signalContexts[item.id] ?? '';
-                  return (
-                    <div key={item.id} className="rounded-lg border border-stone-100 bg-white p-2.5">
-                      <div className="flex items-start gap-2">
-                        <Icon size={13} className="mt-0.5 shrink-0 text-stone-400" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-stone-700">{item.summary}</p>
-                          <p className="mt-0.5 text-[10px] text-stone-400">
-                            {item.provider} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            {item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}
-                          </p>
+
+              {/* Minutes + Billable + Activity type */}
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <Clock size={13} className="text-stone-400" />
+                  <input
+                    type="number"
+                    min={0}
+                    value={entry.confirmedMinutes}
+                    onChange={(e) => onUpdate({ confirmedMinutes: Math.max(0, Number(e.target.value) || 0) })}
+                    className="w-16 rounded-md border border-stone-200 bg-white px-2 py-1 text-center text-sm text-stone-700 outline-none focus:border-accent-500"
+                  />
+                  <span className="text-xs text-stone-400">min</span>
+                </div>
+
+                <label className="flex items-center gap-1.5 text-xs text-stone-600">
+                  <input
+                    type="checkbox"
+                    checked={entry.billable}
+                    onChange={(e) => onUpdate({ billable: e.target.checked })}
+                    className="rounded accent-accent-600"
+                  />
+                  Billable
+                </label>
+
+                {entry.activityType && (
+                  <span className="rounded-md bg-accent-50 px-2 py-1 text-[11px] font-medium text-accent-700">
+                    {entry.activityType}
+                  </span>
+                )}
+              </div>
+
+              {/* Source signals */}
+              {sourceItems.length > 0 && (
+                <div>
+                  <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                    <FileText size={12} className="text-accent-600" />
+                    Source signals
+                    <span className="font-normal text-stone-300">{sourceItems.length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {sourceItems.map((item) => {
+                      const Icon = item.provider === 'calendar' ? CalendarDays : item.provider === 'browser' ? Globe : MousePointer2;
+                      const context = signalContexts[item.id] ?? '';
+                      return (
+                        <div key={item.id} className="rounded-lg border border-stone-100 bg-white p-3">
+                          <div className="flex items-start gap-2">
+                            <Icon size={13} className="mt-0.5 shrink-0 text-stone-400" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-stone-700">{item.summary}</p>
+                              <p className="mt-0.5 text-[10px] text-stone-400">
+                                {item.provider} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <textarea
+                            value={context}
+                            onChange={(e) => {
+                              const nextContext = e.target.value;
+                              setSignalContexts((prev) => ({ ...prev, [item.id]: nextContext }));
+                              if (sourceItems.length === 1) {
+                                onUpdate({ description: nextContext || entry.description });
+                              }
+                            }}
+                            placeholder="Add context for this signal..."
+                            rows={2}
+                            className="mt-2 w-full resize-y rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
+                          />
                         </div>
-                      </div>
-                      <textarea
-                        value={context}
-                        onChange={(e) => {
-                          const nextContext = e.target.value;
-                          setSignalContexts((prev) => ({ ...prev, [item.id]: nextContext }));
-                          if (sourceItems.length === 1) {
-                            onUpdate({ description: nextContext || entry.description });
-                          }
-                        }}
-                        placeholder="Add context for this signal..."
-                        rows={2}
-                        className="mt-2 w-full resize-y rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        </>,
+        document.body,
       )}
     </div>
   );
