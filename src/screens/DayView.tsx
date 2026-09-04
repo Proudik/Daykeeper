@@ -55,7 +55,9 @@ import {
   FileText,
   Sparkles,
   FileEdit,
+  FlaskConical,
 } from 'lucide-react';
+import { generateMockItems } from '@/lib/mockData';
 
 interface DayViewProps {
   selectedDate: string;
@@ -143,6 +145,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const [lastDropMatterId, setLastDropMatterId] = useState<string | null>(null);
   const [pendingDropItemId, setPendingDropItemId] = useState<string | null>(null);
   const [hoveredEntryItemIds, setHoveredEntryItemIds] = useState<Set<string>>(new Set());
+  const [useMockData, setUseMockData] = useState(false);
   const [generationRevision, setGenerationRevision] = useState(0);
   const [mobileTab, setMobileTab] = useState<'signals' | 'timesheet'>('signals');
   const [isMobile, setIsMobile] = useState(false);
@@ -165,6 +168,12 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const rounding = profile?.rounding_minutes ?? 15;
   const targetHours = profile?.target_hours ?? 8;
   const language = profile?.output_language ?? 'en';
+
+  // When mock data is enabled, replace items with generated mock data for the selected date.
+  const displayItems = useMockData ? generateMockItems(selectedDate) : items;
+  const displaySelectedIds = useMockData
+    ? new Set(displayItems.map((i) => i.id))
+    : selectedIds;
 
   // Fetch org data (matters, activity types, clients, SingleCase provider) once
   useEffect(() => {
@@ -518,8 +527,8 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   }
 
   const selectedItems = useMemo(
-    () => items.filter((i) => selectedIds.has(i.id)),
-    [items, selectedIds],
+    () => displayItems.filter((i) => displaySelectedIds.has(i.id)),
+    [displayItems, displaySelectedIds],
   );
 
   // For the summary bar, only count non-brief items (>=10 min) that are selected.
@@ -606,7 +615,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   // Detect possible duplicates: sessions that overlap existing SingleCase entries
   const duplicateItemIds = useMemo(() => {
     const dupes = new Set<string>();
-    for (const item of items) {
+    for (const item of displayItems) {
       if (item.provider === 'singlecase') continue; // SC items are the source of truth
       const caseId = item.meta.caseId ?? null;
       const { isDuplicate } = checkPossibleDuplicate(
@@ -618,7 +627,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
       if (isDuplicate) dupes.add(item.id);
     }
     return dupes;
-  }, [items, existingTimeEntries]);
+  }, [displayItems, existingTimeEntries]);
 
   // Items available for generation (excluding duplicates the user hasn't overridden)
   const generationItems = useMemo(() => {
@@ -969,6 +978,14 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setUseMockData((v) => !v)}
+              title="Toggle mock data for testing"
+              className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${useMockData ? 'bg-amber-100 text-amber-800' : 'text-amber-700 hover:bg-amber-50'}`}
+            >
+              <FlaskConical size={14} />
+              <span className="hidden lg:inline">{useMockData ? 'Mock data ON' : 'Mock data'}</span>
+            </button>
+            <button
               onClick={handleSimulateDocEdit}
               title="Simulate SingleCase document editing"
               className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-50"
@@ -1134,7 +1151,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                 </div>
               ))}
             </div>
-          ) : items.length === 0 ? (
+          ) : displayItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               {providerError ? (
                 <>
@@ -1282,7 +1299,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                 </div>
                 <div className="max-h-[calc(100vh-13rem)] overflow-y-auto">
                 <VerticalTimeline
-                  items={items}
+                  items={displayItems}
                   timezone={profile?.timezone}
                   workStart={workStart}
                   workEnd={workEnd}
@@ -1293,8 +1310,8 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
               </div>
               <div className="card min-w-0 flex-1 overflow-hidden">
                 <ActivityList
-                  items={items}
-                  selectedIds={selectedIds}
+                  items={displayItems}
+                  selectedIds={displaySelectedIds}
                   onToggle={toggle}
                   collapsedSections={collapsedSections}
                   onToggleSection={toggleSection}
