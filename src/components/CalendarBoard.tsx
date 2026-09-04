@@ -174,17 +174,40 @@ function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]
     .map((block, index) => ({ ...block, index }))
     .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
   const laneEnds: number[] = [];
-  const result = blocks.map(() => ({ lane: 0, laneCount: 0 }));
+  const result = blocks.map(() => ({ lane: 0, laneCount: 1 }));
 
   for (const block of sorted) {
     let lane = laneEnds.findIndex((end) => end <= block.startMin);
     if (lane === -1) lane = laneEnds.length;
     laneEnds[lane] = block.endMin;
-    result[block.index] = { lane, laneCount: 0 };
+    result[block.index] = { lane, laneCount: 1 };
   }
 
-  const laneCount = Math.max(laneEnds.length, 1);
-  return result.map((assignment) => ({ ...assignment, laneCount }));
+  const visited = new Set<number>();
+  for (let start = 0; start < blocks.length; start++) {
+    if (visited.has(start)) continue;
+
+    const group: number[] = [start];
+    visited.add(start);
+    for (let cursor = 0; cursor < group.length; cursor++) {
+      const current = blocks[group[cursor]];
+      for (let index = 0; index < blocks.length; index++) {
+        if (visited.has(index)) continue;
+        const candidate = blocks[index];
+        if (candidate.startMin < current.endMin && candidate.endMin > current.startMin) {
+          visited.add(index);
+          group.push(index);
+        }
+      }
+    }
+
+    const laneCount = Math.max(...group.map((index) => result[index].lane + 1), 1);
+    for (const index of group) {
+      result[index].laneCount = laneCount;
+    }
+  }
+
+  return result;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
