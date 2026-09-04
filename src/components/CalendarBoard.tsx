@@ -433,7 +433,7 @@ export function CalendarBoard({
           left: `${left}%`,
           width: `${isHovered ? expandedWidth : width}%`,
           borderColor: block.color,
-          backgroundColor: block.isInTimesheet ? `${block.color}55` : `${block.color}18`,
+          backgroundColor: isHovered ? '#ffffff' : block.isInTimesheet ? `${block.color}55` : `${block.color}18`,
         }}
       >
         <div className="relative min-h-full border-l-[3px] px-1.5 py-1" style={{ borderColor: block.color }}>
