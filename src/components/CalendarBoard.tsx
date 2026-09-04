@@ -404,11 +404,11 @@ export function CalendarBoard({
     const width = Math.max(24, 100 / block.laneCount - 3);
     const left = (block.lane * 100) / block.laneCount + 1.5;
 
-    const expandedWidth = Math.max(width, 45);
-    const expandLeft = isHovered
-      ? Math.min(left, 100 - expandedWidth - 1)
-      : left;
-    const expandWidth = isHovered ? expandedWidth : width;
+    const matterId = block.itemIds.map((id) => manualOverrides.get(id)).find((v) => v !== undefined && v !== null);
+    const matter = matterId ? matters.find((m) => m.id === matterId) : null;
+    const matterColor = matter ? MATTER_PALETTE[matters.indexOf(matter) % MATTER_PALETTE.length] : null;
+    const tooltipWidth = 240;
+    const tooltipLeft = Math.min(left, 100 - (tooltipWidth / (boardRef.current?.clientWidth || 600)) * 100 - 1);
 
     return (
       <div
@@ -422,29 +422,28 @@ export function CalendarBoard({
         onMouseLeave={() => {
           setHoveredBlock(null);
         }}
-        className={`group absolute cursor-grab rounded-md border text-left transition-all duration-150 ${
+        className={`group absolute z-10 cursor-grab overflow-visible rounded-md border text-left transition-shadow duration-150 ${
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
-        } ${isHovered ? 'shadow-lg z-30 overflow-visible' : 'overflow-hidden z-10'}`}
+        } ${isHovered ? 'z-30 shadow-md' : ''}`}
         style={{
           top: topPx,
-          height: isHovered ? 'auto' : heightPx,
-          minHeight: heightPx,
-          left: `${expandLeft}%`,
-          width: `${expandWidth}%`,
+          height: heightPx,
+          left: `${left}%`,
+          width: `${width}%`,
           borderColor: block.color,
           backgroundColor: block.isInTimesheet ? `${block.color}55` : `${block.color}18`,
         }}
       >
-        <div className="h-full border-l-[3px] px-1.5 py-1" style={{ borderColor: block.color }}>
+        <div className="relative h-full overflow-hidden border-l-[3px] px-1.5 py-1" style={{ borderColor: block.color }}>
           {heightPx >= 20 && (
-            <p className={`text-[10px] font-medium leading-tight text-stone-700 ${isHovered ? 'whitespace-normal' : 'truncate'}`}>
+            <p className="truncate text-[10px] font-medium leading-tight text-stone-700">
               {block.label}
             </p>
           )}
           {heightPx >= 34 && (
-            <p className={`text-[9px] leading-tight text-stone-500 ${isHovered ? 'whitespace-normal' : 'truncate'}`}>
+            <p className="truncate text-[9px] leading-tight text-stone-500">
               {block.subLabel}
             </p>
           )}
@@ -453,26 +452,38 @@ export function CalendarBoard({
               {block.itemIds.length} signals
             </span>
           )}
-          {(() => {
-            const matterId = block.itemIds.map((id) => manualOverrides.get(id)).find((v) => v !== undefined && v !== null);
-            if (!matterId) return null;
-            const matter = matters.find((m) => m.id === matterId);
-            if (!matter) return null;
-            const matterColor = MATTER_PALETTE[matters.indexOf(matter) % MATTER_PALETTE.length];
-            return (
-              <div
-                className="mt-0.5 flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm"
-                style={{ backgroundColor: matterColor }}
-              >
-                <Briefcase size={7} className="shrink-0" />
-                <span className={isHovered ? 'whitespace-normal' : 'truncate'}>{matter.name}</span>
-              </div>
-            );
-          })()}
+          {matter && matterColor && (
+            <div className="mt-0.5 flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm" style={{ backgroundColor: matterColor }}>
+              <Briefcase size={7} className="shrink-0" />
+              <span className="truncate">{matter.name}</span>
+            </div>
+          )}
           {block.isUsed && (
             <CheckCircle2 size={10} className="absolute right-1 top-1 text-emerald-600" />
           )}
         </div>
+        {isHovered && (
+          <div
+            className="pointer-events-none absolute top-0 z-50 max-h-40 overflow-y-auto rounded-md border-2 bg-white px-3 py-2 shadow-xl"
+            style={{
+              left: `${tooltipLeft - left}%`,
+              width: `${tooltipWidth}px`,
+              borderColor: block.color,
+            }}
+          >
+            <p className="break-words text-[13px] font-medium leading-snug text-stone-800">{block.label}</p>
+            <p className="mt-1 text-[11px] leading-snug text-stone-500">{block.subLabel}</p>
+            {block.isAggregate && (
+              <p className="mt-1 text-[10px] font-semibold text-stone-600">{block.itemIds.length} signals</p>
+            )}
+            {matter && matterColor && (
+              <div className="mt-1 flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold text-white" style={{ backgroundColor: matterColor }}>
+                <Briefcase size={10} className="shrink-0" />
+                <span className="break-words">{matter.name}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
