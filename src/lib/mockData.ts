@@ -1,4 +1,4 @@
-import type { ActivityItem, ActivityMeta, Provider } from '@/types';
+import type { ActivityItem, ActivityMeta, Matter, Provider } from '@/types';
 
 /**
  * Generates realistic mock activity items for testing the calendar board.
@@ -21,6 +21,32 @@ function isoEnd(date: string, h: number, m: number, durMin: number): string {
   const eh = Math.floor(total / 60);
   const em = total % 60;
   return `${date}T${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}:00`;
+}
+
+export function generateMockMatters(): Matter[] {
+  const now = new Date().toISOString();
+  const base: Omit<Matter, 'id' | 'external_id' | 'case_id_visible' | 'name' | 'client_external_id' | 'is_internal'> = {
+    org_id: 'mock-org',
+    parent_external_id: null,
+    project_state_id: null,
+    state_is_open: true,
+    responsible_user_id: null,
+    responsible_user_name: null,
+    language: 'ces',
+    currency: 'CZK',
+    case_no: null,
+    court_case_no: null,
+    custom_fields: {},
+    last_activity_at: null,
+    synced_at: now,
+  };
+  return [
+    { ...base, id: 'case-novak-001', external_id: 'case-novak-001', case_id_visible: 'NOV-2024-001', name: 'Novak v. CSOB', client_external_id: 'client-novak', is_internal: false },
+    { ...base, id: 'case-dvorak-002', external_id: 'case-dvorak-002', case_id_visible: 'DV-2024-002', name: 'Dvorak dispute', client_external_id: 'client-dvorak', is_internal: false },
+    { ...base, id: 'case-kovar-003', external_id: 'case-kovar-003', case_id_visible: 'KOV-2024-003', name: 'Kovars estate', client_external_id: 'client-kovar', is_internal: false },
+    { ...base, id: 'case-smith-004', external_id: 'case-smith-004', case_id_visible: '20230004', name: 'General Advisory', client_external_id: 'client-smith', is_internal: false },
+    { ...base, id: 'case-internal', external_id: 'case-internal', case_id_visible: 'INT-001', name: 'Internal matter', client_external_id: null, is_internal: true },
+  ];
 }
 
 export function generateMockItems(date: string): ActivityItem[] {

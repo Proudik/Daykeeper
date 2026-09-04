@@ -47,7 +47,7 @@ import {
   Briefcase,
   FlaskConical,
 } from 'lucide-react';
-import { generateMockItems } from '@/lib/mockData';
+import { generateMockItems, generateMockMatters } from '@/lib/mockData';
 
 interface DayViewProps {
   selectedDate: string;
@@ -159,6 +159,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
 
   // When mock data is enabled, replace items with generated mock data for the selected date.
   const displayItems = useMockData ? generateMockItems(selectedDate) : items;
+  const displayMatters = useMockData ? generateMockMatters() : matters;
   const displaySelectedIds = useMockData
     ? new Set(displayItems.map((i) => i.id))
     : selectedIds;
@@ -563,7 +564,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     if (scProviderData) {
       raw = resolveDay(
         estResult.entries, visibleSelectedItems,
-        matters, scProviderData.contacts, scProviderData.matterContacts,
+        displayMatters, scProviderData.contacts, scProviderData.matterContacts,
         scProviderData.emailLookup, 'current-user', matterRules,
       );
     } else {
@@ -579,8 +580,8 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
       }));
     }
     if (manualOverrides.size === 0) return raw;
-    return applyManualOverrides(raw, estResult.entries, manualOverrides, matters);
-  }, [visibleSelectedItems, profile, workStart, workEnd, rounding, targetHours, matterRules, matters, scProviderData, manualOverrides]);
+    return applyManualOverrides(raw, estResult.entries, manualOverrides, displayMatters);
+  }, [visibleSelectedItems, profile, workStart, workEnd, rounding, targetHours, matterRules, displayMatters, scProviderData, manualOverrides]);
 
   // Also keep the old attribution for timeline coloring
   const matterGroups = useMemo<MatterGroup[]>(() => {
@@ -596,10 +597,10 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
     const attributed = attributeEntries(estResult.entries, visibleSelectedItems, {
       emailLookup: scProviderData?.emailLookup ?? { byAddress: new Map(), byDomain: new Map() },
       matterRules,
-      matters,
+      displayMatters,
     });
-    return groupByMatter(attributed, matters);
-  }, [visibleSelectedItems, matters, profile, workStart, workEnd, rounding, targetHours, matterRules, scProviderData]);
+    return groupByMatter(attributed, displayMatters);
+  }, [visibleSelectedItems, displayMatters, profile, workStart, workEnd, rounding, targetHours, matterRules, scProviderData]);
 
   const unassignedGroup = matterGroups.find((g) => g.isUnassigned && !g.isInternal);
   const internalGroups = matterGroups.filter((g) => g.isInternal);
@@ -671,7 +672,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         const scData = scProviderData;
         rawSessions = resolveDay(
           estResult.entries, generationItems,
-          matters, scData.contacts, scData.matterContacts,
+          displayMatters, scData.contacts, scData.matterContacts,
           scData.emailLookup, 'current-user', matterRules,
         );
       } else {
@@ -687,7 +688,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         }));
       }
       const sessions = manualOverrides.size > 0
-        ? applyManualOverrides(rawSessions, estResult.entries, manualOverrides, matters)
+        ? applyManualOverrides(rawSessions, estResult.entries, manualOverrides, displayMatters)
         : rawSessions;
 
       const sessionsForGeneration = sessions.filter((s) => s.matterId !== null);
@@ -702,7 +703,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         language,
         redactClientNames: false,
         activityTypes: activityTypes.map((a) => ({ id: a.id, label: a.label })),
-        matters,
+        displayMatters,
         clients,
         rules: matterRules,
       });
@@ -986,7 +987,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
           {manualEntries.length > 0 && (
             <div className="mb-4 space-y-1.5">
               {manualEntries.map((entry) => {
-                const matter = matters.find((m) => m.id === entry.matter_id);
+                const matter = displayMatters.find((m) => m.id === entry.matter_id);
                 return (
                   <div key={entry.id} className="card flex items-center gap-3 px-3 py-2">
                     <span className="rounded bg-accent-100 px-1.5 py-0.5 text-xs font-medium text-accent-800">
@@ -1109,7 +1110,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
           ) : (
             <CalendarBoard
               items={visibleSelectedItems}
-              matters={matters}
+              matters={displayMatters}
               timezone={profile?.timezone}
               workStart={workStart}
               workEnd={workEnd}
@@ -1166,7 +1167,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             entries={draftEntries ?? []}
             items={displayItems}
             onEntriesChange={(e) => setDraftEntries(e)}
-            matters={matters}
+            matters={displayMatters}
             estimate={estimateResult}
             targetHours={targetHours}
             existingRecordedMinutes={recordedMinutes}
@@ -1196,7 +1197,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
               <MatterPicker
                 anchorId={pendingDropItemId}
                 candidates={pendingDropSession.candidates}
-                matters={matters}
+                matters={displayMatters}
                 clients={clients}
                 recentMatterIds={recentMatterIds}
                 currentMatterId={null}
@@ -1242,7 +1243,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
 
       {/* Recent cases drop zone */}
       <RecentCasesBar
-        matters={matters}
+        matters={displayMatters}
         recentMatterIds={recentMatterIds}
         onDropGroup={(itemIds, matterId) => {
           setSelectedIds((prev) => {

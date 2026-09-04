@@ -13,9 +13,8 @@ import {
   AlertCircle,
   Sparkles,
   FileDown,
-  ChevronDown,
-  ChevronRight,
   Maximize2,
+  Minimize2,
   X,
   FileText,
   Globe,
@@ -75,14 +74,13 @@ export function TimesheetPanel({
   hasAssignedSessions,
   lastDropMatterId,
 }: TimesheetPanelProps) {
-  const [collapsedMatters, setCollapsedMatters] = useState<Set<string>>(new Set());
+  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [dropFlash, setDropFlash] = useState<string | null>(null);
   const [emptyDropActive, setEmptyDropActive] = useState(false);
   const [matterDropActive, setMatterDropActive] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [signalContexts, setSignalContexts] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -123,13 +121,21 @@ export function TimesheetPanel({
         ? '#f59e0b'
         : '#0d9488';
 
-  function toggleMatter(key: string) {
-    setCollapsedMatters((prev) => {
+  function toggleEntry(id: string) {
+    setExpandedEntries((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
+  }
+
+  function expandAll() {
+    setExpandedEntries(new Set(entries.map((e) => e.id)));
+  }
+
+  function collapseAll() {
+    setExpandedEntries(new Set());
   }
 
   function updateEntry(id: string, patch: Partial<DraftTimesheetEntry>) {
@@ -168,6 +174,8 @@ export function TimesheetPanel({
     }
   }, [entries.length]);
 
+  const allExpanded = entries.length > 0 && expandedEntries.size === entries.length;
+
   return (
     <div className="relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30">
       {/* Header */}
@@ -178,30 +186,24 @@ export function TimesheetPanel({
               <Sparkles size={15} className="text-accent-700" />
             </div>
             <div>
-              <button
-                onClick={() => entries.length > 0 && setInspectorOpen(true)}
-                disabled={entries.length === 0}
-                className="text-left transition-colors hover:text-accent-700 disabled:cursor-default"
-                title="Open detailed timesheet editor"
-              >
-                <h3 className="text-sm font-semibold text-stone-800">Timesheet Preview</h3>
+              <h3 className="text-sm font-semibold text-stone-800">Timesheet Preview</h3>
               <p className="text-[11px] text-stone-400">
                 {hasAssignedSessions
                   ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} · ${formatMinutes(totalMinutes)}`
                   : 'Assign matters to generate'}
-                </p>
-              </button>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => entries.length > 0 && setInspectorOpen(true)}
-              disabled={entries.length === 0}
-              className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-accent-700 disabled:opacity-30"
-              title="Open detailed editor"
-            >
-              <Maximize2 size={14} />
-            </button>
+            {entries.length > 0 && (
+              <button
+                onClick={allExpanded ? collapseAll : expandAll}
+                className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+                title={allExpanded ? 'Collapse all' : 'Expand all'}
+              >
+                {allExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              </button>
+            )}
             <button
               onClick={copyAll}
               disabled={entries.length === 0}
@@ -255,7 +257,6 @@ export function TimesheetPanel({
             {Array.from(matterGroups.entries()).map(([matterKey, groupEntries]) => {
               const matter = matters.find((m) => m.id === matterKey);
               const color = matter ? matterColorMap.get(matter.id) ?? '#78716c' : '#d97706';
-              const collapsed = collapsedMatters.has(matterKey);
               const groupMinutes = groupEntries.reduce((s, e) => s + e.confirmedMinutes, 0);
 
               const isCardGenerating = generating && lastDropMatterId === matterKey;
@@ -284,13 +285,9 @@ export function TimesheetPanel({
                   }`}
                   style={{ animation: 'fadeInUp 0.3s ease-out both' }}
                 >
-                  {/* Matter header */}
-                  <button
-                    onClick={() => toggleMatter(matterKey)}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors"
-                  >
-                    {collapsed ? <ChevronRight size={14} className="text-stone-400 transition-transform duration-200" /> : <ChevronDown size={14} className="text-stone-400 transition-transform duration-200" />}
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full transition-transform duration-200" style={{ backgroundColor: color }} />
+                  {/* Matter header — no arrows, always expanded */}
+                  <div className="flex w-full items-center gap-2 px-3 py-2.5">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                     <div className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-stone-800">
                         {matter?.case_id_visible ?? matter?.name ?? 'Unassigned'}
@@ -308,27 +305,30 @@ export function TimesheetPanel({
                     <span className="shrink-0 text-xs font-medium text-stone-600">
                       {formatMinutes(groupMinutes)}
                     </span>
-                  </button>
+                  </div>
 
-                  {/* Entries */}
-                  {!collapsed && (
-                    <div className="divide-y divide-stone-100 border-t border-stone-100">
-                      {groupEntries.map((entry, i) => (
-                        <div
-                          key={entry.id}
-                          style={{ animation: `fadeInUp 0.3s ease-out ${i * 60}ms both` }}
-                          onMouseEnter={() => onHoverEntry?.(entry.sourceItemIds ?? null)}
-                          onMouseLeave={() => onHoverEntry?.(null)}
-                        >
-                          <EntryRow
-                            entry={entry}
-                            color={color}
-                            onUpdate={(patch) => updateEntry(entry.id, patch)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {/* Entries — always visible, each individually expandable */}
+                  <div className="divide-y divide-stone-100 border-t border-stone-100">
+                    {groupEntries.map((entry, i) => (
+                      <div
+                        key={entry.id}
+                        style={{ animation: `fadeInUp 0.3s ease-out ${i * 60}ms both` }}
+                        onMouseEnter={() => onHoverEntry?.(entry.sourceItemIds ?? null)}
+                        onMouseLeave={() => onHoverEntry?.(null)}
+                      >
+                        <ExpandableEntryRow
+                          entry={entry}
+                          items={items}
+                          color={color}
+                          isExpanded={expandedEntries.has(entry.id)}
+                          onToggle={() => toggleEntry(entry.id)}
+                          onUpdate={(patch) => updateEntry(entry.id, patch)}
+                          signalContexts={signalContexts}
+                          setSignalContexts={setSignalContexts}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })}
@@ -434,132 +434,45 @@ export function TimesheetPanel({
           )}
         </div>
       )}
-      <div
-        className={`absolute right-0 top-0 z-40 flex h-full w-[min(620px,calc(100vw-24px))] flex-col rounded-2xl border border-stone-200 bg-white shadow-2xl shadow-stone-900/20 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          inspectorOpen ? 'translate-x-0' : 'translate-x-[calc(100%+24px)]'
-        }`}
-        aria-hidden={!inspectorOpen}
-      >
-        <div className="flex shrink-0 items-center justify-between border-b border-stone-200 bg-stone-50/95 px-5 py-4">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-accent-700">Detailed editor</p>
-            <h2 className="mt-1 text-base font-semibold text-stone-900">Timesheet signals</h2>
-            <p className="mt-0.5 text-xs text-stone-500">Edit each entry and add context to its source signals.</p>
-          </div>
-          <button
-            onClick={() => setInspectorOpen(false)}
-            className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-white hover:text-stone-800"
-            title="Close detailed editor"
-          >
-            <X size={18} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto bg-stone-50/60 p-4">
-          <div className="space-y-4">
-            {entries.map((entry, index) => {
-              const sourceItems = (entry.sourceItemIds ?? [])
-                .map((id) => items.find((item) => item.id === id))
-                .filter((item): item is ActivityItem => Boolean(item));
-              return (
-                <div key={entry.id} className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm">
-                  <div className="border-b border-stone-100 px-4 py-3">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-400">Entry {index + 1}</span>
-                      <label className="flex items-center gap-2 text-xs text-stone-500">
-                        <input
-                          type="checkbox"
-                          checked={entry.billable}
-                          onChange={(event) => updateEntry(entry.id, { billable: event.target.checked })}
-                          className="rounded accent-accent-600"
-                        />
-                        Billable
-                      </label>
-                    </div>
-                    <textarea
-                      value={entry.description}
-                      onChange={(event) => updateEntry(entry.id, { description: event.target.value })}
-                      rows={3}
-                      className="w-full resize-y rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm leading-relaxed text-stone-800 outline-none transition focus:border-accent-500 focus:bg-white focus:ring-2 focus:ring-accent-100"
-                      aria-label={`Edit entry ${index + 1} description`}
-                    />
-                    <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
-                      <Clock size={13} />
-                      <span>Minutes</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={entry.confirmedMinutes}
-                        onChange={(event) => updateEntry(entry.id, { confirmedMinutes: Math.max(0, Number(event.target.value) || 0) })}
-                        className="w-16 rounded-md border border-stone-200 px-2 py-1 text-center text-stone-700 outline-none focus:border-accent-500"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2 px-4 py-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-stone-600">
-                      <FileText size={13} className="text-accent-600" />
-                      Source signals
-                      <span className="font-normal text-stone-400">{sourceItems.length}</span>
-                    </div>
-                    {sourceItems.length === 0 ? (
-                      <p className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-400">No source details available.</p>
-                    ) : sourceItems.map((item) => {
-                      const Icon = item.provider === 'calendar' ? CalendarDays : item.provider === 'browser' ? Globe : MousePointer2;
-                      const context = signalContexts[item.id] ?? '';
-                      return (
-                        <div key={item.id} className="rounded-lg border border-stone-100 bg-stone-50/70 p-3">
-                          <div className="flex items-start gap-2">
-                            <Icon size={14} className="mt-0.5 shrink-0 text-stone-400" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium text-stone-700">{item.summary}</p>
-                              <p className="mt-0.5 text-[11px] text-stone-400">{item.provider} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}{item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}</p>
-                            </div>
-                          </div>
-                          <textarea
-                            value={context}
-                            onChange={(event) => {
-                              const nextContext = event.target.value;
-                              setSignalContexts((prev) => ({ ...prev, [item.id]: nextContext }));
-                              if (sourceItems.length === 1) {
-                                updateEntry(entry.id, { description: nextContext || entry.description });
-                              }
-                            }}
-                            placeholder="Add context for this signal..."
-                            rows={2}
-                            className="mt-2 w-full resize-y rounded-md border border-stone-200 bg-white px-2.5 py-2 text-xs text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
-                            aria-label={`Add context for ${item.summary}`}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className="flex shrink-0 justify-end border-t border-stone-200 bg-white px-5 py-3">
-          <button onClick={() => setInspectorOpen(false)} className="btn-primary text-sm">Done editing</button>
-        </div>
-      </div>
     </div>
   );
 }
 
-function EntryRow({
+function ExpandableEntryRow({
   entry,
+  items,
   color,
+  isExpanded,
+  onToggle,
   onUpdate,
+  signalContexts,
+  setSignalContexts,
 }: {
   entry: DraftTimesheetEntry;
+  items: ActivityItem[];
   color: string;
+  isExpanded: boolean;
+  onToggle: () => void;
   onUpdate: (patch: Partial<DraftTimesheetEntry>) => void;
+  signalContexts: Record<string, string>;
+  setSignalContexts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }) {
+  const sourceItems = (entry.sourceItemIds ?? [])
+    .map((id) => items.find((item) => item.id === id))
+    .filter((item): item is ActivityItem => Boolean(item));
+
   return (
-    <div className="px-3 py-2.5">
-      <div className="flex items-start gap-2">
+    <div className="transition-colors duration-150">
+      {/* Collapsed view — click to expand */}
+      <button
+        onClick={onToggle}
+        className="flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-stone-50"
+      >
         <div className="mt-1.5 h-1 w-1 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm leading-relaxed text-stone-700">{entry.description}</p>
+          <p className={`text-sm leading-relaxed text-stone-700 ${isExpanded ? 'font-medium' : ''}`}>
+            {entry.description}
+          </p>
           <div className="mt-1.5 flex items-center gap-2">
             {entry.activityType && (
               <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-500">
@@ -568,25 +481,112 @@ function EntryRow({
             )}
             <span className="flex items-center gap-0.5 text-[11px] text-stone-400">
               <Clock size={10} />
-              <input
-                type="number"
-                value={entry.confirmedMinutes}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value) || 0;
-                  onUpdate({ confirmedMinutes: Math.max(0, val) });
-                }}
-                className="w-10 border-b border-transparent bg-transparent text-stone-600 outline-none hover:border-stone-300 focus:border-accent-500"
-              />
-              min
+              {entry.confirmedMinutes} min
             </span>
             {!entry.billable && (
               <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] text-stone-400">
                 Non-billable
               </span>
             )}
+            <span className="ml-auto text-[10px] text-stone-300">
+              {isExpanded ? 'Click to collapse' : 'Click to expand'}
+            </span>
           </div>
         </div>
-      </div>
+      </button>
+
+      {/* Expanded view — fine-tuning options */}
+      {isExpanded && (
+        <div className="border-t border-stone-100 bg-stone-50/60 px-3 py-3 animate-fade-in">
+          {/* Description */}
+          <div className="mb-3">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+              Description
+            </label>
+            <textarea
+              value={entry.description}
+              onChange={(e) => onUpdate({ description: e.target.value })}
+              rows={2}
+              className="w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm leading-relaxed text-stone-800 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
+            />
+          </div>
+
+          {/* Minutes + Billable + Activity type */}
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <Clock size={13} className="text-stone-400" />
+              <input
+                type="number"
+                min={0}
+                value={entry.confirmedMinutes}
+                onChange={(e) => onUpdate({ confirmedMinutes: Math.max(0, Number(e.target.value) || 0) })}
+                className="w-16 rounded-md border border-stone-200 bg-white px-2 py-1 text-center text-sm text-stone-700 outline-none focus:border-accent-500"
+              />
+              <span className="text-xs text-stone-400">min</span>
+            </div>
+
+            <label className="flex items-center gap-1.5 text-xs text-stone-600">
+              <input
+                type="checkbox"
+                checked={entry.billable}
+                onChange={(e) => onUpdate({ billable: e.target.checked })}
+                className="rounded accent-accent-600"
+              />
+              Billable
+            </label>
+
+            {entry.activityType && (
+              <span className="rounded-md bg-accent-50 px-2 py-1 text-[11px] font-medium text-accent-700">
+                {entry.activityType}
+              </span>
+            )}
+          </div>
+
+          {/* Source signals */}
+          {sourceItems.length > 0 && (
+            <div>
+              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+                <FileText size={12} className="text-accent-600" />
+                Source signals
+                <span className="font-normal text-stone-300">{sourceItems.length}</span>
+              </div>
+              <div className="space-y-1.5">
+                {sourceItems.map((item) => {
+                  const Icon = item.provider === 'calendar' ? CalendarDays : item.provider === 'browser' ? Globe : MousePointer2;
+                  const context = signalContexts[item.id] ?? '';
+                  return (
+                    <div key={item.id} className="rounded-lg border border-stone-100 bg-white p-2.5">
+                      <div className="flex items-start gap-2">
+                        <Icon size={13} className="mt-0.5 shrink-0 text-stone-400" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-stone-700">{item.summary}</p>
+                          <p className="mt-0.5 text-[10px] text-stone-400">
+                            {item.provider} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <textarea
+                        value={context}
+                        onChange={(e) => {
+                          const nextContext = e.target.value;
+                          setSignalContexts((prev) => ({ ...prev, [item.id]: nextContext }));
+                          if (sourceItems.length === 1) {
+                            onUpdate({ description: nextContext || entry.description });
+                          }
+                        }}
+                        placeholder="Add context for this signal..."
+                        rows={2}
+                        className="mt-2 w-full resize-y rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
