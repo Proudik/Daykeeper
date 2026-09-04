@@ -1268,6 +1268,8 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                   timezone={profile?.timezone}
                   onDragStart={() => undefined}
                   onDeleteItem={handleDeleteItem}
+                  manualOverrides={manualOverrides}
+                  matters={matters}
                 />
               </div>
             </div>

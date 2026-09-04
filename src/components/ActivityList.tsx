@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ActivityItem, Provider } from '@/types';
+import type { ActivityItem, Matter, Provider } from '@/types';
 import { formatTime, formatTimeRange, minutesBetween, formatMinutes } from '@/lib/time';
 import { providerColors } from '@/components/TimelineStrip';
 import { ChevronDown, ChevronRight, Mail, Calendar, MessageSquare, CheckSquare, FileText, Inbox, X, CheckCircle2, ArrowDownLeft, ArrowUpRight, Globe, Clock, Zap, Trash2 } from 'lucide-react';
@@ -28,6 +28,8 @@ interface ActivityListProps {
   timezone?: string;
   onDragStart?: (itemId: string) => void;
   onDeleteItem?: (itemId: string) => void;
+  manualOverrides?: Map<string, string | null>;
+  matters?: Matter[];
 }
 
 const providerIcons: Record<Provider, typeof Mail> = {
@@ -67,6 +69,8 @@ export function ActivityList({
   timezone,
   onDragStart,
   onDeleteItem,
+  manualOverrides,
+  matters,
 }: ActivityListProps) {
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [showUsed, setShowUsed] = useState(true);
@@ -268,6 +272,17 @@ export function ActivityList({
 
                       {/* Duration / status */}
                       <div className="flex shrink-0 flex-col items-end gap-0.5 text-right text-xs text-stone-500">
+                        {(() => {
+                          const matterId = manualOverrides?.get(item.id);
+                          if (!matterId) return null;
+                          const matter = matters?.find((m) => m.id === matterId);
+                          if (!matter) return null;
+                          return (
+                            <span className="inline-block max-w-[120px] truncate rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                              {matter.case_id_visible ?? matter.name}
+                            </span>
+                          );
+                        })()}
                         {generatedItemIds?.has(item.id) && (
                           <span className="rounded-full bg-accent-100 px-1.5 py-0.5 text-[10px] font-semibold text-accent-700">
                             In timesheet
