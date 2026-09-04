@@ -307,7 +307,10 @@ export function CalendarBoard({
           ? timestampToMinutes(item.endTimestamp, timezone)
           : sMin + (item.durationMinutes ?? 15);
         const duration = eMin - sMin;
-        const visualEnd = duration < MIN_DURATION_MIN ? sMin + MIN_DURATION_MIN : eMin;
+        const assignedMatterId = manualOverrides.get(item.id);
+        const assignedBlockMinutes = Math.ceil((64 / hourPx) * 60);
+        const minimumDuration = assignedMatterId ? assignedBlockMinutes : MIN_DURATION_MIN;
+        const visualEnd = duration < minimumDuration ? sMin + minimumDuration : eMin;
         return { item, startMin: sMin, endMin: visualEnd, key: item.id };
       });
 
@@ -333,7 +336,7 @@ export function CalendarBoard({
     }
 
     return result;
-  }, [items, timezone, usedItemIds, generatedItemIds]);
+  }, [items, timezone, usedItemIds, generatedItemIds, manualOverrides, hourPx]);
 
   // Extend the display range to include all items so signals outside
   // working hours are still visible on the grid.
@@ -452,7 +455,7 @@ export function CalendarBoard({
                 style={{ backgroundColor: matterColor }}
               >
                 <Briefcase size={7} className="shrink-0" />
-                <span className="truncate">{matter.case_id_visible ?? matter.name}</span>
+                <span className="truncate">{matter.name}</span>
               </div>
             );
           })()}
