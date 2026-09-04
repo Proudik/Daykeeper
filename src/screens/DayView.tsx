@@ -621,6 +621,23 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const internalGroups = matterGroups.filter((g) => g.isInternal);
   const billableGroups = matterGroups.filter((g) => !g.isUnassigned && !g.isInternal);
 
+  // Merged assignment map: auto-assigned matters from resolvedSessions,
+  // overridden by any manual assignments the user has made.
+  const mergedOverrides = useMemo(() => {
+    const merged = new Map<string, string | null>();
+    for (const session of resolvedSessions) {
+      if (session.matterId) {
+        for (const itemId of session.sourceItemIds) {
+          merged.set(itemId, session.matterId);
+        }
+      }
+    }
+    for (const [itemId, matterId] of manualOverrides) {
+      merged.set(itemId, matterId);
+    }
+    return merged;
+  }, [resolvedSessions, manualOverrides]);
+
   // Count unassigned items from the resolver (for generation gating)
   const unassignedCount = useMemo(() => {
     return resolvedSessions.filter((s) => s.matterId === null).length;
@@ -1115,7 +1132,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
               usedItemIds={usedItemIds}
               generatedItemIds={generatedItemIds}
               highlightedItemIds={hoveredEntryItemIds}
-              manualOverrides={manualOverrides}
+              manualOverrides={mergedOverrides}
               onAssign={(itemId, matterId) => {
                 setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
                 setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, matterId); return next; });
@@ -1145,7 +1162,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                 // When signals are manually connected, check if any already has
                 // a matter assigned — if so, apply it to the whole group.
                 const existingMatter = itemIds
-                  .map((id) => manualOverrides.get(id))
+                  .map((id) => mergedOverrides.get(id))
                   .find((v) => v !== undefined && v !== null);
                 if (existingMatter) {
                   setManualOverrides((prev) => {
@@ -1178,7 +1195,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             onRegenerate={handleGenerate}
             onDropSignal={handlePreviewDrop}
             onDropToEmpty={(itemId) => {
-              const existingMatter = manualOverrides.get(itemId);
+              const existingMatter = mergedOverrides.get(itemId);
               if (existingMatter) {
                 handlePreviewDrop(itemId, existingMatter);
               } else {
@@ -1243,7 +1260,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         matters={displayMatters}
         recentMatterIds={recentMatterIds}
         items={displayItems}
-        manualOverrides={manualOverrides}
+        manualOverrides={mergedOverrides}
         onDropGroup={(itemIds, matterId) => {
           setSelectedIds((prev) => {
             const next = new Set(prev);
