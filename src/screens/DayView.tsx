@@ -718,7 +718,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
         language,
         redactClientNames: false,
         activityTypes: activityTypes.map((a) => ({ id: a.id, label: a.label })),
-        displayMatters,
+        matters: displayMatters,
         clients,
         rules: matterRules,
       });
