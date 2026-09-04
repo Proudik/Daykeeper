@@ -1,6 +1,5 @@
-import { useState, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import type { DragEvent } from 'react';
-import { createPortal } from 'react-dom';
 import type { ActivityItem, DraftTimesheetEntry, Matter } from '@/types';
 import type { EstimateResult } from '@/lib/estimator';
 import { formatMinutes, formatHours } from '@/lib/time';
@@ -20,7 +19,6 @@ import {
   CalendarDays,
   MousePointer2,
   FolderOpen,
-  ChevronLeft,
 } from 'lucide-react';
 
 interface TimesheetPanelProps {
@@ -76,7 +74,6 @@ export function TimesheetPanel({
 }: TimesheetPanelProps) {
   const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [dropFlash, setDropFlash] = useState<string | null>(null);
   const [emptyDropActive, setEmptyDropActive] = useState(false);
@@ -107,6 +104,8 @@ export function TimesheetPanel({
     }
     return groups;
   }, [entries]);
+
+  const expandedEntry = expandedEntryId ? entries.find((entry) => entry.id === expandedEntryId) ?? null : null;
 
   const totalMinutes = entries.reduce((s, e) => s + e.confirmedMinutes, 0);
   const totalBillableMinutes = entries
@@ -146,8 +145,6 @@ export function TimesheetPanel({
       .map((e, i) => `${i + 1}. ${formatMinutes(e.confirmedMinutes)} — ${e.activityType ?? 'General'}\n   ${e.description}`)
       .join('\n\n');
     navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   }
 
   // Auto-scroll to bottom when new entries arrive
@@ -168,7 +165,7 @@ export function TimesheetPanel({
   }, [expandedEntryId]);
 
   return (
-    <div className="relative flex h-full flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30">
+    <div className={`absolute inset-y-3 right-3 z-20 flex flex-col overflow-visible rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-300/30 transition-[width] duration-300 ease-out ${expandedEntry ? 'w-[min(68vw,950px)]' : 'w-[calc(100%-12px)]'}`}>
       {/* Header */}
       <div className="shrink-0 border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
         <div className="flex items-center justify-between">
@@ -223,7 +220,7 @@ export function TimesheetPanel({
       </div>
 
       {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={scrollRef} className={`relative flex-1 overflow-y-auto px-4 py-3 ${expandedEntry ? 'pr-[48%]' : ''}`}>
         {generating && <GeneratingMessage />}
         {generationErrors.length > 0 ? (
           <div className="space-y-2">
@@ -300,16 +297,11 @@ export function TimesheetPanel({
                       >
                         <ExpandableEntryRow
                           entry={entry}
-                          items={items}
                           color={color}
                           isExpanded={expandedEntryId === entry.id}
                           onToggle={() =>
                             setExpandedEntryId((prev) => (prev === entry.id ? null : entry.id))
                           }
-                          onUpdate={(patch) => updateEntry(entry.id, patch)}
-                          signalContexts={signalContexts}
-                          setSignalContexts={setSignalContexts}
-                          onClose={() => setExpandedEntryId(null)}
                         />
                       </div>
                     ))}
@@ -318,6 +310,18 @@ export function TimesheetPanel({
               );
             })}
           </div>
+        )}
+
+        {expandedEntry && (
+          <EntryEditorPanel
+            entry={expandedEntry}
+            items={items}
+            color={expandedEntry.matterId ? matterColorMap.get(expandedEntry.matterId) ?? '#78716c' : '#d97706'}
+            signalContexts={signalContexts}
+            setSignalContexts={setSignalContexts}
+            onUpdate={(patch) => updateEntry(expandedEntry.id, patch)}
+            onClose={() => setExpandedEntryId(null)}
+          />
         )}
 
         {/* Drop zone for dragging a whole case into the timesheet */}
@@ -425,57 +429,18 @@ export function TimesheetPanel({
 
 function ExpandableEntryRow({
   entry,
-  items,
   color,
   isExpanded,
   onToggle,
-  onUpdate,
-  signalContexts,
-  setSignalContexts,
-  onClose,
 }: {
   entry: DraftTimesheetEntry;
-  items: ActivityItem[];
   color: string;
   isExpanded: boolean;
   onToggle: () => void;
-  onUpdate: (patch: Partial<DraftTimesheetEntry>) => void;
-  signalContexts: Record<string, string>;
-  setSignalContexts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  onClose: () => void;
 }) {
-  const sourceItems = (entry.sourceItemIds ?? [])
-    .map((id) => items.find((item) => item.id === id))
-    .filter((item): item is ActivityItem => Boolean(item));
-
-  const rowRef = useRef<HTMLButtonElement>(null);
-  const [flyoutStyle, setFlyoutStyle] = useState<React.CSSProperties>({});
-
-  useLayoutEffect(() => {
-    if (!isExpanded || !rowRef.current) return;
-    const rect = rowRef.current.getBoundingClientRect();
-    const flyoutWidth = 480;
-    const gap = 12;
-    // Position the flyout to the left of the panel, aligned with the row
-    const right = window.innerWidth - rect.left + gap;
-    const maxRight = window.innerWidth - 24;
-    const clampedRight = Math.min(right, maxRight);
-    const top = Math.max(12, rect.top - 8);
-    setFlyoutStyle({
-      position: 'fixed',
-      top,
-      right: clampedRight,
-      width: flyoutWidth,
-      maxWidth: window.innerWidth - rect.width - gap - 16,
-      zIndex: 9999,
-    });
-  }, [isExpanded]);
-
   return (
     <div className="transition-colors duration-150">
-      {/* Collapsed view — click to expand */}
       <button
-        ref={rowRef}
         onClick={onToggle}
         className={`flex w-full items-start gap-2 px-3 py-2.5 text-left transition-colors hover:bg-stone-50 ${
           isExpanded ? 'bg-accent-50/40 ring-1 ring-inset ring-accent-200' : ''
@@ -501,140 +466,136 @@ function ExpandableEntryRow({
                 Non-billable
               </span>
             )}
-            <span className="ml-auto flex items-center gap-0.5 text-[10px] text-stone-300">
-              <ChevronLeft size={11} />
-              {isExpanded ? 'Close' : 'Edit'}
+            <span className="ml-auto text-[10px] text-stone-300">
+              {isExpanded ? 'Editing' : 'Edit'}
             </span>
           </div>
         </div>
       </button>
+    </div>
+  );
+}
 
-      {/* Left-expanding flyout — portaled to body to escape overflow/transform */}
-      {isExpanded && flyoutStyle.position && createPortal(
-        <>
-          {/* Click-away catcher */}
-          <button
-            type="button"
-            aria-label="Close entry editor"
-            onClick={onClose}
-            className="fixed inset-0 cursor-default bg-transparent"
-            style={{ zIndex: 9998 }}
+function EntryEditorPanel({
+  entry,
+  items,
+  color,
+  signalContexts,
+  setSignalContexts,
+  onUpdate,
+  onClose,
+}: {
+  entry: DraftTimesheetEntry;
+  items: ActivityItem[];
+  color: string;
+  signalContexts: Record<string, string>;
+  setSignalContexts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  onUpdate: (patch: Partial<DraftTimesheetEntry>) => void;
+  onClose: () => void;
+}) {
+  const sourceItems = (entry.sourceItemIds ?? [])
+    .map((id) => items.find((item) => item.id === id))
+    .filter((item): item is ActivityItem => Boolean(item));
+
+  return (
+    <aside className="animate-slide-in-right absolute inset-y-0 right-0 z-10 flex w-[46%] min-w-[320px] flex-col border-l border-stone-200 bg-white">
+      <div className="flex items-center justify-between border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+          <span className="text-sm font-semibold text-stone-800">Edit Entry</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+          title="Close"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="mb-4">
+          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+            Description
+          </label>
+          <textarea
+            value={entry.description}
+            onChange={(e) => onUpdate({ description: e.target.value })}
+            rows={3}
+            className="w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm leading-relaxed text-stone-800 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
           />
-          {/* Flyout panel */}
-          <div
-            style={flyoutStyle}
-            className="animate-slide-in-right flex flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl shadow-stone-400/40"
-          >
-            {/* Flyout header */}
-            <div className="flex items-center justify-between border-b border-stone-200 bg-gradient-to-b from-stone-50 to-white px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-                <span className="text-sm font-semibold text-stone-800">Edit Entry</span>
-              </div>
-              <button
-                onClick={onClose}
-                className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
-                title="Close (Esc)"
-              >
-                <X size={14} />
-              </button>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <Clock size={13} className="text-stone-400" />
+            <input
+              type="number"
+              min={0}
+              value={entry.confirmedMinutes}
+              onChange={(e) => onUpdate({ confirmedMinutes: Math.max(0, Number(e.target.value) || 0) })}
+              className="w-16 rounded-md border border-stone-200 bg-white px-2 py-1 text-center text-sm text-stone-700 outline-none focus:border-accent-500"
+            />
+            <span className="text-xs text-stone-400">min</span>
+          </div>
+          <label className="flex items-center gap-1.5 text-xs text-stone-600">
+            <input
+              type="checkbox"
+              checked={entry.billable}
+              onChange={(e) => onUpdate({ billable: e.target.checked })}
+              className="rounded accent-accent-600"
+            />
+            Billable
+          </label>
+          {entry.activityType && (
+            <span className="rounded-md bg-accent-50 px-2 py-1 text-[11px] font-medium text-accent-700">
+              {entry.activityType}
+            </span>
+          )}
+        </div>
+
+        {sourceItems.length > 0 && (
+          <div>
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
+              <FileText size={12} className="text-accent-600" />
+              Source signals
+              <span className="font-normal text-stone-300">{sourceItems.length}</span>
             </div>
-
-            {/* Flyout body */}
-            <div className="flex-1 overflow-y-auto px-4 py-4">
-              {/* Description */}
-              <div className="mb-4">
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-                  Description
-                </label>
-                <textarea
-                  value={entry.description}
-                  onChange={(e) => onUpdate({ description: e.target.value })}
-                  rows={3}
-                  className="w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm leading-relaxed text-stone-800 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
-                />
-              </div>
-
-              {/* Minutes + Billable + Activity type */}
-              <div className="mb-4 flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <Clock size={13} className="text-stone-400" />
-                  <input
-                    type="number"
-                    min={0}
-                    value={entry.confirmedMinutes}
-                    onChange={(e) => onUpdate({ confirmedMinutes: Math.max(0, Number(e.target.value) || 0) })}
-                    className="w-16 rounded-md border border-stone-200 bg-white px-2 py-1 text-center text-sm text-stone-700 outline-none focus:border-accent-500"
-                  />
-                  <span className="text-xs text-stone-400">min</span>
-                </div>
-
-                <label className="flex items-center gap-1.5 text-xs text-stone-600">
-                  <input
-                    type="checkbox"
-                    checked={entry.billable}
-                    onChange={(e) => onUpdate({ billable: e.target.checked })}
-                    className="rounded accent-accent-600"
-                  />
-                  Billable
-                </label>
-
-                {entry.activityType && (
-                  <span className="rounded-md bg-accent-50 px-2 py-1 text-[11px] font-medium text-accent-700">
-                    {entry.activityType}
-                  </span>
-                )}
-              </div>
-
-              {/* Source signals */}
-              {sourceItems.length > 0 && (
-                <div>
-                  <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-stone-400">
-                    <FileText size={12} className="text-accent-600" />
-                    Source signals
-                    <span className="font-normal text-stone-300">{sourceItems.length}</span>
+            <div className="space-y-2">
+              {sourceItems.map((item) => {
+                const Icon = item.provider === 'calendar' ? CalendarDays : item.provider === 'browser' ? Globe : MousePointer2;
+                const context = signalContexts[item.id] ?? '';
+                return (
+                  <div key={item.id} className="rounded-lg border border-stone-100 bg-white p-3">
+                    <div className="flex items-start gap-2">
+                      <Icon size={13} className="mt-0.5 shrink-0 text-stone-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-stone-700">{item.summary}</p>
+                        <p className="mt-0.5 text-[10px] text-stone-400">
+                          {item.provider} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <textarea
+                      value={context}
+                      onChange={(e) => {
+                        const nextContext = e.target.value;
+                        setSignalContexts((prev) => ({ ...prev, [item.id]: nextContext }));
+                        if (sourceItems.length === 1) onUpdate({ description: nextContext || entry.description });
+                      }}
+                      placeholder="Add context for this signal..."
+                      rows={2}
+                      className="mt-2 w-full resize-y rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
+                    />
                   </div>
-                  <div className="space-y-2">
-                    {sourceItems.map((item) => {
-                      const Icon = item.provider === 'calendar' ? CalendarDays : item.provider === 'browser' ? Globe : MousePointer2;
-                      const context = signalContexts[item.id] ?? '';
-                      return (
-                        <div key={item.id} className="rounded-lg border border-stone-100 bg-white p-3">
-                          <div className="flex items-start gap-2">
-                            <Icon size={13} className="mt-0.5 shrink-0 text-stone-400" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-medium text-stone-700">{item.summary}</p>
-                              <p className="mt-0.5 text-[10px] text-stone-400">
-                                {item.provider} · {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                {item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}
-                              </p>
-                            </div>
-                          </div>
-                          <textarea
-                            value={context}
-                            onChange={(e) => {
-                              const nextContext = e.target.value;
-                              setSignalContexts((prev) => ({ ...prev, [item.id]: nextContext }));
-                              if (sourceItems.length === 1) {
-                                onUpdate({ description: nextContext || entry.description });
-                              }
-                            }}
-                            placeholder="Add context for this signal..."
-                            rows={2}
-                            className="mt-2 w-full resize-y rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-xs text-stone-700 outline-none transition placeholder:text-stone-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-100"
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+                );
+              })}
             </div>
           </div>
-        </>,
-        document.body,
-      )}
-    </div>
+        )}
+      </div>
+    </aside>
   );
 }
 
