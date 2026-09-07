@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback } from 'react';
+import { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import type { ActivityItem, Matter, Provider } from '@/types';
 import {
   timestampToMinutes,
@@ -148,7 +148,7 @@ function aggregateBrowser(items: ActivityItem[], timezone?: string): AggregatedG
   return groups.sort((a, b) => a.startMin - b.startMin);
 }
 
-// ── Lane assignment for overlap stacking ────────────────────────────────────
+// ── Block type ──────────────────────────────────────────────────────────────
 
 interface PlacedBlock {
   key: string;
@@ -167,7 +167,12 @@ interface PlacedBlock {
   isInTimesheet?: boolean;
   originalItem?: ActivityItem;
   column: ColumnKey;
+  topPx?: number;
+  heightPx?: number;
+  isStacked?: boolean;
 }
+
+// ── Lane assignment (for split groups, ≤ MAX_LANES) ─────────────────────────
 
 function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]): { lane: number; laneCount: number }[] {
   const sorted = blocks
@@ -210,6 +215,187 @@ function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]
   return result;
 }
 
+// ── Non-linear scale for collapsing empty time ──────────────────────────────
+
+const COLLAPSE_THRESHOLD_MIN = 30;
+const COLLAPSED_BAND_PX = 28;
+const OVERLAP_TOLERANCE_MIN = 5;
+const MAX_LANES = 2;
+const TRANSITION_MS = 280;
+
+interface ScaleSegment {
+  startMin: number;
+  endMin: number;
+  type: 'active' | 'gap';
+  gapId?: string;
+  px: number;
+}
+
+function buildScale(
+  allBlocks: { startMin: number; endMin: number }[],
+  displayStart: number,
+  displayEnd: number,
+  collapseEmpty: boolean,
+  expandedGapIds: Set<string>,
+  hourPx: number,
+): { segments: ScaleSegment[]; gapSegments: ScaleSegment[]; totalPx: number; minuteToPx: (min: number) => number } {
+  // Merge overlapping busy intervals
+  const sorted = [...allBlocks].sort((a, b) => a.startMin - b.startMin);
+  const merged: { start: number; end: number }[] = [];
+  for (const iv of sorted) {
+    if (merged.length > 0 && iv.start <= merged[merged.length - 1].end) {
+      merged[merged.length - 1].end = Math.max(merged[merged.length - 1].end, iv.end);
+    } else {
+      merged.push({ start: iv.start, end: iv.end });
+    }
+  }
+
+  // Find gaps ≥ threshold
+  const gaps: { start: number; end: number; id: string }[] = [];
+  let cursor = displayStart;
+  for (const iv of merged) {
+    if (iv.start - cursor >= COLLAPSE_THRESHOLD_MIN) {
+      gaps.push({ start: cursor, end: iv.start, id: `gap-${cursor}-${iv.start}` });
+    }
+    cursor = Math.max(cursor, iv.end);
+  }
+  if (displayEnd - cursor >= COLLAPSE_THRESHOLD_MIN) {
+    gaps.push({ start: cursor, end: displayEnd, id: `gap-${cursor}-${displayEnd}` });
+  }
+
+  // Build alternating active/gap segments
+  const segments: ScaleSegment[] = [];
+  let segCursor = displayStart;
+  for (const gap of gaps) {
+    segments.push({ startMin: segCursor, endMin: gap.start, type: 'active', px: 0 });
+    const isCollapsed = collapseEmpty && !expandedGapIds.has(gap.id);
+    segments.push({
+      startMin: gap.start,
+      endMin: gap.end,
+      type: isCollapsed ? 'gap' : 'active',
+      gapId: gap.id,
+      px: 0,
+    });
+    segCursor = gap.end;
+  }
+  if (segCursor < displayEnd) {
+    segments.push({ startMin: segCursor, endMin: displayEnd, type: 'active', px: 0 });
+  }
+  if (segments.length === 0) {
+    segments.push({ startMin: displayStart, endMin: displayEnd, type: 'active', px: 0 });
+  }
+
+  // Compute pixel heights
+  let totalPx = 0;
+  for (const seg of segments) {
+    seg.px = seg.type === 'gap'
+      ? COLLAPSED_BAND_PX
+      : ((seg.endMin - seg.startMin) / 60) * hourPx;
+    totalPx += seg.px;
+  }
+
+  // Build minuteToPx lookup
+  const offsets: number[] = [];
+  let cumPx = 0;
+  for (const seg of segments) {
+    offsets.push(cumPx);
+    cumPx += seg.px;
+  }
+
+  const minuteToPx = (min: number): number => {
+    for (let i = 0; i < segments.length; i++) {
+      if (min >= segments[i].startMin && min <= segments[i].endMin) {
+        const seg = segments[i];
+        if (seg.endMin === seg.startMin) return offsets[i];
+        return offsets[i] + ((min - seg.startMin) / (seg.endMin - seg.startMin)) * seg.px;
+      }
+    }
+    if (min < segments[0].startMin) return ((min - segments[0].startMin) / 60) * hourPx;
+    return totalPx + ((min - segments[segments.length - 1].endMin) / 60) * hourPx;
+  };
+
+  const gapSegments = segments.filter((s) => s.gapId !== undefined);
+
+  return { segments, gapSegments, totalPx, minuteToPx };
+}
+
+// ── Min height & packing ────────────────────────────────────────────────────
+
+function computeMinHeight(block: PlacedBlock, manualOverrides: Map<string, string | null>): number {
+  const hasMatter = block.itemIds.some((id) => {
+    const m = manualOverrides.get(id);
+    return m !== undefined && m !== null;
+  });
+  if (block.isAggregate) return hasMatter ? 60 : 44;
+  return hasMatter ? 40 : 24;
+}
+
+function packColumn(
+  blocks: PlacedBlock[],
+  minuteToPx: (min: number) => number,
+  minHeights: Map<string, number>,
+): PlacedBlock[] {
+  if (blocks.length === 0) return [];
+
+  const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin);
+
+  // Group overlapping blocks (with tolerance for sequential bursts)
+  const groups: PlacedBlock[][] = [];
+  let currentGroup: PlacedBlock[] = [];
+  let groupEnd = -Infinity;
+
+  for (const block of sorted) {
+    if (currentGroup.length === 0 || block.startMin <= groupEnd + OVERLAP_TOLERANCE_MIN) {
+      currentGroup.push(block);
+      groupEnd = Math.max(groupEnd, block.endMin);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [block];
+      groupEnd = block.endMin;
+    }
+  }
+  if (currentGroup.length > 0) groups.push(currentGroup);
+
+  const packed: PlacedBlock[] = [];
+  let floorPx = 0;
+
+  for (const group of groups) {
+    if (group.length <= MAX_LANES) {
+      // Split: side-by-side lanes
+      const laneAssignments = assignLanes(group);
+      const laneCount = Math.max(...laneAssignments.map((a) => a.lane + 1));
+      let groupBottom = 0;
+
+      for (let i = 0; i < group.length; i++) {
+        const block = group[i];
+        const naturalTop = minuteToPx(block.startMin);
+        const topPx = Math.max(naturalTop, floorPx);
+        const naturalHeight = minuteToPx(block.endMin) - minuteToPx(block.startMin);
+        const minHeight = minHeights.get(block.key) ?? 24;
+        const heightPx = Math.max(minHeight, naturalHeight);
+
+        packed.push({ ...block, lane: laneAssignments[i].lane, laneCount, topPx, heightPx });
+        groupBottom = Math.max(groupBottom, topPx + heightPx);
+      }
+      floorPx = groupBottom + 2;
+    } else {
+      // Stack: full width, one below another in start order
+      for (const block of group) {
+        const naturalTop = minuteToPx(block.startMin);
+        const topPx = Math.max(naturalTop, floorPx);
+        const naturalHeight = minuteToPx(block.endMin) - minuteToPx(block.startMin);
+        const minHeight = minHeights.get(block.key) ?? 24;
+        const heightPx = Math.max(minHeight, naturalHeight);
+
+        packed.push({ ...block, lane: 0, laneCount: 1, topPx, heightPx, isStacked: true });
+        floorPx = topPx + heightPx + 2;
+      }
+    }
+  }
+
+  return packed;
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 interface CalendarBoardProps {
@@ -226,10 +412,9 @@ interface CalendarBoardProps {
   onDropGroup: (itemIds: string[], matterId: string) => void;
   onHoverEntry: (itemIds: string[] | null) => void;
   onConnectGroup: (itemIds: string[]) => void;
+  collapseEmpty: boolean;
 }
 
-const MIN_BLOCK_PX = 24;
-const MIN_DURATION_MIN = 15;
 const MIN_HOUR_PX = 28;
 const MAX_HOUR_PX = 240;
 const DEFAULT_HOUR_PX = 56;
@@ -245,17 +430,22 @@ export function CalendarBoard({
   highlightedItemIds,
   manualOverrides,
   onAssign: _onAssign,
-  onDropGroup,
-  onHoverEntry,
+  onDropGroup: _onDropGroup,
+  onHoverEntry: _onHoverEntry,
   onConnectGroup: _onConnectGroup,
+  collapseEmpty,
 }: CalendarBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoveredBlock, setHoveredBlock] = useState<string | null>(null);
   const [hourPx, setHourPx] = useState(DEFAULT_HOUR_PX);
+  const [expandedGapIds, setExpandedGapIds] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
-  // Cmd/Ctrl + scroll to zoom the calendar time scale
+  useEffect(() => {
+    if (!collapseEmpty) setExpandedGapIds(new Set());
+  }, [collapseEmpty]);
+
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (!e.metaKey && !e.ctrlKey) return;
     e.preventDefault();
@@ -270,15 +460,10 @@ export function CalendarBoard({
   const baseDisplayStart = Math.floor(workStartMin / 60) * 60;
   const baseDisplayEnd = Math.ceil(workEndMin / 60) * 60;
 
-  // Build column data
-  const columns = useMemo(() => {
+  // Build raw blocks per column (no lane assignment yet)
+  const rawColumns = useMemo(() => {
     const result: Record<ColumnKey, PlacedBlock[]> = {
-      calendar: [],
-      email_sent: [],
-      sc_doc: [],
-      sc_other: [],
-      browser: [],
-      other: [],
+      calendar: [], email_sent: [], sc_doc: [], sc_other: [], browser: [], other: [],
     };
 
     for (const colDef of COLUMNS) {
@@ -286,21 +471,12 @@ export function CalendarBoard({
 
       if (colDef.key === 'sc_other') {
         const groups = aggregateScOther(colItems, timezone);
-        const laneAssignments = assignLanes(groups);
-        result.sc_other = groups.map((g, i) => ({
-          key: g.key,
-          label: g.label,
-          subLabel: g.subLabel,
-          startMin: g.startMin,
-          endMin: g.endMin,
-          lane: laneAssignments[i].lane,
-          laneCount: laneAssignments[i].laneCount,
-          color: colDef.color,
-          itemIds: g.itemIds,
-          isAggregate: true,
-          caseId: g.caseId,
-          caseName: g.caseName,
-          column: colDef.key,
+        result.sc_other = groups.map((g) => ({
+          key: g.key, label: g.label, subLabel: g.subLabel,
+          startMin: g.startMin, endMin: g.endMin,
+          lane: 0, laneCount: 1, color: colDef.color,
+          itemIds: g.itemIds, isAggregate: true,
+          caseId: g.caseId, caseName: g.caseName, column: colDef.key,
           isUsed: g.itemIds.every((id) => usedItemIds.has(id)),
           isInTimesheet: g.itemIds.some((id) => generatedItemIds.has(id)),
         }));
@@ -309,19 +485,11 @@ export function CalendarBoard({
 
       if (colDef.key === 'browser') {
         const groups = aggregateBrowser(colItems, timezone);
-        const laneAssignments = assignLanes(groups);
-        result.browser = groups.map((g, i) => ({
-          key: g.key,
-          label: g.label,
-          subLabel: g.subLabel,
-          startMin: g.startMin,
-          endMin: g.endMin,
-          lane: laneAssignments[i].lane,
-          laneCount: laneAssignments[i].laneCount,
-          color: colDef.color,
-          itemIds: g.itemIds,
-          isAggregate: true,
-          column: colDef.key,
+        result.browser = groups.map((g) => ({
+          key: g.key, label: g.label, subLabel: g.subLabel,
+          startMin: g.startMin, endMin: g.endMin,
+          lane: 0, laneCount: 1, color: colDef.color,
+          itemIds: g.itemIds, isAggregate: true, column: colDef.key,
           isUsed: g.itemIds.every((id) => usedItemIds.has(id)),
           isInTimesheet: g.itemIds.some((id) => generatedItemIds.has(id)),
         }));
@@ -336,101 +504,114 @@ export function CalendarBoard({
         const duration = eMin - sMin;
         const assignedMatterId = manualOverrides.get(item.id);
         const assignedBlockMinutes = Math.ceil((64 / hourPx) * 60);
-        const minimumDuration = assignedMatterId ? assignedBlockMinutes : MIN_DURATION_MIN;
+        const minimumDuration = assignedMatterId ? assignedBlockMinutes : 15;
         const visualEnd = duration < minimumDuration ? sMin + minimumDuration : eMin;
         return { item, startMin: sMin, endMin: visualEnd, key: item.id };
       });
 
-      const laneAssignments = assignLanes(blockItems);
-      result[colDef.key] = blockItems.map((b, i) => ({
+      result[colDef.key] = blockItems.map((b) => ({
         key: b.key,
         label: b.item.meta.subject ?? b.item.meta.title ?? b.item.meta.fileName ?? b.item.summary,
         subLabel: b.item.endTimestamp
           ? formatTimeRange(b.item.timestamp, b.item.endTimestamp, timezone)
           : formatTime(b.item.timestamp, timezone),
-        startMin: b.startMin,
-        endMin: b.endMin,
-        lane: laneAssignments[i].lane,
-        laneCount: laneAssignments[i].laneCount,
-        color: colDef.color,
-        itemIds: [b.item.id],
-        isAggregate: false,
-        originalItem: b.item,
-        column: colDef.key,
+        startMin: b.startMin, endMin: b.endMin,
+        lane: 0, laneCount: 1, color: colDef.color,
+        itemIds: [b.item.id], isAggregate: false,
+        originalItem: b.item, column: colDef.key,
         isUsed: usedItemIds.has(b.item.id),
         isInTimesheet: generatedItemIds.has(b.item.id),
       }));
     }
-
     return result;
   }, [items, timezone, usedItemIds, generatedItemIds, manualOverrides, hourPx]);
 
-  // Extend the display range to include all items so signals outside
-  // working hours are still visible on the grid.
+  // Extend display range to include all items
   const { displayStart, displayEnd } = useMemo(() => {
     let start = baseDisplayStart;
     let end = baseDisplayEnd;
     for (const col of COLUMNS) {
-      for (const block of columns[col.key]) {
+      for (const block of rawColumns[col.key]) {
         if (block.startMin < start) start = Math.floor(block.startMin / 60) * 60;
         if (block.endMin > end) end = Math.ceil(block.endMin / 60) * 60;
       }
     }
     return { displayStart: start, displayEnd: end };
-  }, [columns, baseDisplayStart, baseDisplayEnd]);
-  const totalPx = ((displayEnd - displayStart) / 60) * hourPx + 8;
+  }, [rawColumns, baseDisplayStart, baseDisplayEnd]);
 
-  // All blocks flat
-  const allBlocks = useMemo(() => {
-    return COLUMNS.flatMap((c) => columns[c.key]);
-  }, [columns]);
+  const allRawBlocks = useMemo(
+    () => COLUMNS.flatMap((c) => rawColumns[c.key]),
+    [rawColumns],
+  );
 
-  // Get all item IDs to drag when dragging a block
-  const getDragGroupIds = useCallback((block: PlacedBlock): string[] => {
-    return block.itemIds;
-  }, []);
+  // Build non-linear scale
+  const { segments, gapSegments, minuteToPx, totalPx } = useMemo(
+    () => buildScale(allRawBlocks, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx),
+    [allRawBlocks, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx],
+  );
 
-  // Hour markers
+  // Pack each column with stacking
+  const packedColumns = useMemo(() => {
+    const result: Record<ColumnKey, PlacedBlock[]> = {
+      calendar: [], email_sent: [], sc_doc: [], sc_other: [], browser: [], other: [],
+    };
+    for (const colDef of COLUMNS) {
+      const minHeights = new Map<string, number>();
+      for (const block of rawColumns[colDef.key]) {
+        minHeights.set(block.key, computeMinHeight(block, manualOverrides));
+      }
+      result[colDef.key] = packColumn(rawColumns[colDef.key], minuteToPx, minHeights);
+    }
+    return result;
+  }, [rawColumns, minuteToPx, manualOverrides]);
+
   const hours = useMemo(() => {
     const arr: number[] = [];
-    for (let h = displayStart / 60; h < displayEnd / 60; h++) {
-      arr.push(h);
-    }
+    for (let h = displayStart / 60; h < displayEnd / 60; h++) arr.push(h);
     return arr;
   }, [displayStart, displayEnd]);
 
-  // Recent matters as buckets
-  // Drag handlers
+  const isHourInCollapsedGap = useCallback((min: number) => {
+    for (const seg of segments) {
+      if (seg.type === 'gap' && min >= seg.startMin && min < seg.endMin) return true;
+    }
+    return false;
+  }, [segments]);
+
   const handleDragStart = useCallback((e: React.DragEvent, block: PlacedBlock) => {
-    const groupIds = getDragGroupIds(block);
-    const payload = JSON.stringify(groupIds);
-    e.dataTransfer.setData('text/daykeeper-items', payload);
+    e.dataTransfer.setData('text/daykeeper-items', JSON.stringify(block.itemIds));
     e.dataTransfer.setData('text/daykeeper-item', block.itemIds[0]);
     e.dataTransfer.effectAllowed = 'move';
     setDraggingId(block.key);
-  }, [getDragGroupIds]);
-
-  const handleDragEnd = useCallback(() => {
-    setDraggingId(null);
   }, []);
 
+  const handleDragEnd = useCallback(() => setDraggingId(null), []);
 
+  function toggleGap(gapId: string) {
+    setExpandedGapIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(gapId)) next.delete(gapId);
+      else next.add(gapId);
+      return next;
+    });
+  }
 
-  // Render a single block
   function renderBlock(block: PlacedBlock) {
-    const topPx = ((block.startMin - displayStart) / 60) * hourPx;
-    const heightPx = Math.max(MIN_BLOCK_PX, ((block.endMin - block.startMin) / 60) * hourPx);
-    // Highlight from timesheet preview hover
+    const topPx = block.topPx ?? 0;
+    const heightPx = block.heightPx ?? 24;
     const isPreviewHighlighted = highlightedItemIds.size > 0 && block.itemIds.some((id) => highlightedItemIds.has(id));
     const isPreviewDimmed = highlightedItemIds.size > 0 && !isPreviewHighlighted;
     const isHovered = hoveredBlock === block.key;
     const width = Math.max(24, 100 / block.laneCount - 3);
     const left = (block.lane * 100) / block.laneCount + 1.5;
 
-    const matterId = block.itemIds.map((id) => manualOverrides.get(id)).find((v) => v !== undefined && v !== null);
+    const matterId = block.itemIds
+      .map((id) => manualOverrides.get(id))
+      .find((v) => v !== undefined && v !== null);
     const matter = matterId ? matters.find((m) => m.id === matterId) : null;
     const matterColor = matter ? MATTER_PALETTE[matters.indexOf(matter) % MATTER_PALETTE.length] : null;
     const expandedWidth = Math.min(92, Math.max(width, 48));
+    const hasMatter = Boolean(matter);
 
     return (
       <div
@@ -438,13 +619,9 @@ export function CalendarBoard({
         draggable
         onDragStart={(e) => handleDragStart(e, block)}
         onDragEnd={handleDragEnd}
-        onMouseEnter={() => {
-          setHoveredBlock(block.key);
-        }}
-        onMouseLeave={() => {
-          setHoveredBlock(null);
-        }}
-        className={`group absolute z-10 cursor-grab rounded-md border text-left transition-all duration-150 ${
+        onMouseEnter={() => setHoveredBlock(block.key)}
+        onMouseLeave={() => setHoveredBlock(null)}
+        className={`group absolute z-10 cursor-grab rounded-md border text-left ${
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
@@ -457,6 +634,7 @@ export function CalendarBoard({
           width: `${isHovered ? expandedWidth : width}%`,
           borderColor: block.color,
           backgroundColor: isHovered ? '#ffffff' : block.isInTimesheet ? `${block.color}55` : `${block.color}18`,
+          transition: `top ${TRANSITION_MS}ms ease-out, height ${TRANSITION_MS}ms ease-out, opacity 150ms ease-out, left 150ms ease-out, width 150ms ease-out`,
         }}
       >
         <div className="relative min-h-full border-l-[3px] px-1.5 py-1" style={{ borderColor: block.color }}>
@@ -465,12 +643,12 @@ export function CalendarBoard({
               {block.label}
             </p>
           )}
-          {heightPx >= 34 && (
+          {heightPx >= 34 && (!hasMatter || heightPx >= 50) && (
             <p className={`text-[9px] leading-tight text-stone-500 ${isHovered ? 'break-words' : 'truncate'}`}>
               {block.subLabel}
             </p>
           )}
-          {block.isAggregate && heightPx >= 40 && (
+          {block.isAggregate && heightPx >= 40 && (!hasMatter || heightPx >= 56) && (
             <span className="mt-0.5 inline-block rounded bg-stone-200/70 px-1 text-[8px] font-semibold text-stone-600">
               {block.itemIds.length} signals
             </span>
@@ -485,67 +663,118 @@ export function CalendarBoard({
             <CheckCircle2 size={10} className="absolute right-1 top-1 text-emerald-600" />
           )}
         </div>
-
       </div>
     );
   }
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Calendar board — scrollable */}
       <div ref={scrollRef} className="flex-1 overflow-auto" onWheel={handleWheel}>
         <div ref={boardRef} className="relative flex gap-0" style={{ minHeight: totalPx + 40 }}>
           {/* Time gutter */}
-          <div className="sticky left-0 z-20 w-12 shrink-0 bg-stone-50/80 backdrop-blur-sm">
-            {hours.map((h) => (
-              <div
-                key={h}
-                className="relative border-t border-stone-100 text-right"
-                style={{ height: hourPx }}
-              >
-                <span className="absolute -top-1.5 right-1.5 rounded bg-white px-0.5 text-[9px] font-medium text-stone-400">
-                  {String(h % 24).padStart(2, '0')}:00
-                </span>
-              </div>
-            ))}
+          <div
+            className="sticky left-0 z-20 w-12 shrink-0 bg-stone-50/80 backdrop-blur-sm"
+            style={{ height: totalPx, transition: `height ${TRANSITION_MS}ms ease-out` }}
+          >
+            {hours.map((h) => {
+              const top = minuteToPx(h * 60);
+              const hidden = isHourInCollapsedGap(h * 60);
+              return (
+                <div
+                  key={h}
+                  className="absolute right-0"
+                  style={{
+                    top,
+                    transition: `top ${TRANSITION_MS}ms ease-out, opacity ${TRANSITION_MS}ms ease-out`,
+                    opacity: hidden ? 0 : 1,
+                  }}
+                >
+                  <span className="absolute -top-1.5 right-1.5 rounded bg-white px-0.5 text-[9px] font-medium text-stone-400">
+                    {String(h % 24).padStart(2, '0')}:00
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Columns */}
-          {COLUMNS.map((colDef) => {
-            const colBlocks = columns[colDef.key];
-            const Icon = colDef.icon;
-            return (
-              <div key={colDef.key} className="relative flex-1 border-l border-stone-200">
-                {/* Column header */}
-                <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-stone-200 bg-stone-50/90 px-2 py-1.5 backdrop-blur-sm">
-                  <Icon size={12} style={{ color: colDef.color }} />
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-600">
-                    {colDef.label}
-                  </span>
-                  <span className="ml-auto text-[9px] text-stone-400">
-                    {colBlocks.length}
-                  </span>
-                </div>
+          {/* Columns wrapper */}
+          <div className="relative flex flex-1">
+            {/* Gap band overlay — spans full width of all columns */}
+            <div
+              className="absolute left-0 right-0 top-0 z-0"
+              style={{ height: totalPx, transition: `height ${TRANSITION_MS}ms ease-out`, pointerEvents: 'none' }}
+            >
+              {gapSegments.map((gap) => {
+                const isCollapsed = gap.type === 'gap';
+                const top = minuteToPx(gap.startMin);
+                const duration = gap.endMin - gap.startMin;
+                return (
+                  <div
+                    key={gap.gapId}
+                    className="absolute left-0 right-0 cursor-pointer border-t border-b border-dashed border-stone-300 bg-stone-50/50 hover:bg-stone-100/70"
+                    style={{
+                      top,
+                      height: isCollapsed ? COLLAPSED_BAND_PX : 0,
+                      opacity: isCollapsed ? 1 : 0,
+                      pointerEvents: isCollapsed ? 'auto' : 'none',
+                      overflow: 'hidden',
+                      transition: `top ${TRANSITION_MS}ms ease-out, height ${TRANSITION_MS}ms ease-out, opacity ${TRANSITION_MS}ms ease-out`,
+                    }}
+                    onClick={() => gap.gapId && toggleGap(gap.gapId)}
+                    title="Click to expand"
+                  >
+                    <div className="flex h-full items-center justify-center">
+                      <span className="whitespace-nowrap text-[9px] text-stone-400">
+                        {formatMinutes(duration)} — no activity
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
-                {/* Hour grid lines */}
-                <div className="relative" style={{ height: totalPx }}>
-                  {hours.map((h) => (
-                    <div
-                      key={h}
-                      className="absolute left-0 right-0 border-t border-stone-100"
-                      style={{ top: ((h * 60 - displayStart) / 60) * hourPx }}
-                    />
-                  ))}
+            {/* Columns */}
+            {COLUMNS.map((colDef) => {
+              const colBlocks = packedColumns[colDef.key];
+              const Icon = colDef.icon;
+              return (
+                <div key={colDef.key} className="relative flex-1 border-l border-stone-200">
+                  {/* Column header */}
+                  <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-stone-200 bg-stone-50/90 px-2 py-1.5 backdrop-blur-sm">
+                    <Icon size={12} style={{ color: colDef.color }} />
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-600">
+                      {colDef.label}
+                    </span>
+                    <span className="ml-auto text-[9px] text-stone-400">{colBlocks.length}</span>
+                  </div>
 
-                  {/* Blocks */}
-                  {colBlocks.map((block) => renderBlock(block))}
+                  {/* Grid */}
+                  <div
+                    className="relative"
+                    style={{ height: totalPx, transition: `height ${TRANSITION_MS}ms ease-out` }}
+                  >
+                    {/* Hour grid lines */}
+                    {hours.map((h) => (
+                      <div
+                        key={h}
+                        className="absolute left-0 right-0 border-t border-stone-100"
+                        style={{
+                          top: minuteToPx(h * 60),
+                          transition: `top ${TRANSITION_MS}ms ease-out, opacity ${TRANSITION_MS}ms ease-out`,
+                          opacity: isHourInCollapsedGap(h * 60) ? 0 : 1,
+                        }}
+                      />
+                    ))}
+
+                    {/* Blocks */}
+                    {colBlocks.map((block) => renderBlock(block))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
-
     </div>
   );
 }

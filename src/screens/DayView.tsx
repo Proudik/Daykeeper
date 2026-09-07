@@ -46,6 +46,7 @@ import {
   FileText,
   Briefcase,
   FlaskConical,
+  Minimize2,
 } from 'lucide-react';
 import { generateMockItems, generateMockMatters } from '@/lib/mockData';
 
@@ -137,6 +138,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const [generationRevision, setGenerationRevision] = useState(0);
   const [mobileTab, setMobileTab] = useState<'signals' | 'timesheet'>('signals');
   const [isMobile, setIsMobile] = useState(false);
+  const [collapseEmpty, setCollapseEmpty] = useState(false);
 
   // Force review mode on mobile for a cleaner phone experience
   useEffect(() => {
@@ -980,6 +982,14 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
               <span className="hidden lg:inline">{useMockData ? 'Mock data ON' : 'Mock data'}</span>
             </button>
             <button
+              onClick={() => setCollapseEmpty((v) => !v)}
+              title={collapseEmpty ? 'Show empty time at full scale' : 'Collapse empty time gaps'}
+              className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${collapseEmpty ? 'bg-accent-100 text-accent-800' : 'text-stone-500 hover:bg-stone-100 hover:text-stone-800'}`}
+            >
+              <Minimize2 size={14} />
+              <span className="hidden lg:inline">{collapseEmpty ? 'Gaps collapsed' : 'Collapse gaps'}</span>
+            </button>
+            <button
               onClick={() => fetchActivity()}
               disabled={loading}
               title="Refresh activity"
@@ -1144,6 +1154,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
               generatedItemIds={generatedItemIds}
               highlightedItemIds={hoveredEntryItemIds}
               manualOverrides={mergedOverrides}
+              collapseEmpty={collapseEmpty}
               onAssign={(itemId, matterId) => {
                 setRecentMatterIds((prev) => [matterId, ...prev.filter((id) => id !== matterId)].slice(0, 10));
                 setManualOverrides((prev) => { const next = new Map(prev); next.set(itemId, matterId); return next; });
