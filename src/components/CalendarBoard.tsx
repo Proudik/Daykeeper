@@ -17,6 +17,7 @@ import {
   Layers,
   CheckCircle2,
   Briefcase,
+  ChevronDown,
 } from 'lucide-react';
 
 // ── Column definitions ────────────────────────────────────────────────────
@@ -218,7 +219,7 @@ function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]
 // ── Non-linear scale for collapsing empty time ──────────────────────────────
 
 const COLLAPSE_THRESHOLD_MIN = 30;
-const COLLAPSED_BAND_PX = 28;
+const COLLAPSED_BAND_PX = 32;
 const OVERLAP_TOLERANCE_MIN = 5;
 const MAX_LANES = 2;
 const TRANSITION_MS = 280;
@@ -749,7 +750,11 @@ export function CalendarBoard({
                 return (
                   <div
                     key={gap.gapId}
-                    className="absolute left-0 right-0 cursor-pointer border-t border-b border-dashed border-stone-300 bg-stone-100/90 hover:bg-stone-200/90"
+                    className={`absolute left-0 right-0 cursor-pointer border-t border-b border-dashed transition-colors ${
+                      isCollapsed
+                        ? 'border-stone-300 bg-stone-100/95 hover:bg-stone-200/95 hover:border-stone-400'
+                        : 'border-transparent'
+                    }`}
                     style={{
                       top,
                       height: isCollapsed ? COLLAPSED_BAND_PX : 0,
@@ -759,12 +764,14 @@ export function CalendarBoard({
                       transition: `top ${TRANSITION_MS}ms ease-out, height ${TRANSITION_MS}ms ease-out, opacity ${TRANSITION_MS}ms ease-out`,
                     }}
                     onClick={() => gap.gapId && toggleGap(gap.gapId)}
-                    title="Click to expand"
+                    title={isCollapsed ? 'Click to expand' : 'Click to collapse'}
                   >
-                    <div className="flex h-full items-center justify-center">
-                      <span className="whitespace-nowrap text-[9px] text-stone-400">
+                    <div className="flex h-full items-center justify-center gap-1.5">
+                      <ChevronDown size={12} className="shrink-0 text-stone-400" />
+                      <span className="whitespace-nowrap text-[9px] font-medium text-stone-500">
                         {formatMinutes(duration)} — no activity
                       </span>
+                      <ChevronDown size={12} className="shrink-0 text-stone-400" />
                     </div>
                   </div>
                 );
