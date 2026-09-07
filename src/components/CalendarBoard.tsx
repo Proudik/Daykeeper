@@ -171,6 +171,8 @@ interface PlacedBlock {
   topPx?: number;
   heightPx?: number;
   isStacked?: boolean;
+  stackGroupKey?: string;
+  stackCount?: number;
 }
 
 // ── Lane assignment (for split groups, ≤ MAX_LANES) ─────────────────────────
@@ -374,6 +376,7 @@ function packColumn(
   blocks: PlacedBlock[],
   minuteToPx: (min: number) => number,
   minHeights: Map<string, number>,
+  expandedStackKeys: Set<string>,
 ): PlacedBlock[] {
   if (blocks.length === 0) return [];
 
@@ -400,7 +403,35 @@ function packColumn(
   let floorPx = 0;
 
   for (const group of groups) {
-    if (group.length <= MAX_LANES) {
+    const stackGroupKey = group.length > MAX_LANES
+      ? `stack-${group.map((block) => block.key).join('|')}`
+      : null;
+
+    if (stackGroupKey && !expandedStackKeys.has(stackGroupKey)) {
+      const first = group[0];
+      const startMin = Math.min(...group.map((block) => block.startMin));
+      const endMin = Math.max(...group.map((block) => block.endMin));
+      const topPx = Math.max(minuteToPx(startMin), floorPx);
+      const heightPx = Math.max(44, minuteToPx(endMin) - minuteToPx(startMin));
+      packed.push({
+        ...first,
+        key: stackGroupKey,
+        label: `${group.length} overlapping activities`,
+        subLabel: 'Click to expand',
+        startMin,
+        endMin,
+        topPx,
+        heightPx,
+        lane: 0,
+        laneCount: 1,
+        itemIds: group.flatMap((block) => block.itemIds),
+        isAggregate: true,
+        isStacked: true,
+        stackGroupKey,
+        stackCount: group.length,
+      });
+      floorPx = topPx + heightPx + 2;
+    } else if (group.length <= MAX_LANES) {
       // Split: side-by-side lanes
       const laneAssignments = assignLanes(group);
       const laneCount = Math.max(...laneAssignments.map((a) => a.lane + 1));
@@ -427,7 +458,16 @@ function packColumn(
         const minHeight = minHeights.get(block.key) ?? 24;
         const heightPx = Math.max(minHeight, naturalHeight);
 
-        packed.push({ ...block, lane: 0, laneCount: 1, topPx, heightPx, isStacked: true });
+        packed.push({
+          ...block,
+          lane: 0,
+          laneCount: 1,
+          topPx,
+          heightPx,
+          isStacked: true,
+          stackGroupKey: stackGroupKey ?? undefined,
+          stackCount: stackGroupKey ? group.length : undefined,
+        });
         floorPx = topPx + heightPx + 2;
       }
     }
@@ -479,6 +519,7 @@ export function CalendarBoard({
   const [hoveredBlock, setHoveredBlock] = useState<string | null>(null);
   const [hourPx, setHourPx] = useState(DEFAULT_HOUR_PX);
   const [expandedGapIds, setExpandedGapIds] = useState<Set<string>>(new Set());
+  const [expandedStackKeys, setExpandedStackKeys] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
@@ -580,8 +621,10 @@ export function CalendarBoard({
   }, [rawColumns, baseDisplayStart, baseDisplayEnd]);
 
   const scaleBlocks = useMemo(() => {
-    return COLUMNS.flatMap((column) => extendForStackedLayout(rawColumns[column.key], manualOverrides, hourPx));
-  }, [rawColumns, manualOverrides, hourPx]);
+    return COLUMNS.flatMap((column) =>
+      rawColumns[column.key].map((block) => ({ startMin: block.startMin, endMin: block.endMin }))
+    );
+  }, [rawColumns]);
 
   // Build non-linear scale after accounting for the vertical space needed by stacks.
   const { segments, gapSegments, minuteToPx, totalPx } = useMemo(
@@ -599,10 +642,23 @@ export function CalendarBoard({
       for (const block of rawColumns[colDef.key]) {
         minHeights.set(block.key, computeMinHeight(block, manualOverrides));
       }
-      result[colDef.key] = packColumn(rawColumns[colDef.key], minuteToPx, minHeights);
+      result[colDef.key] = packColumn(rawColumns[colDef.key], minuteToPx, minHeights, expandedStackKeys);
     }
     return result;
-  }, [rawColumns, minuteToPx, manualOverrides]);
+  }, [rawColumns, minuteToPx, manualOverrides, expandedStackKeys]);
+
+  // After packing, the actual height may exceed the scale-based totalPx
+  // because stacked blocks get pushed down beyond their natural time positions.
+  const effectiveTotalPx = useMemo(() => {
+    let maxBottom = 0;
+    for (const col of COLUMNS) {
+      for (const block of packedColumns[col.key]) {
+        const bottom = (block.topPx ?? 0) + (block.heightPx ?? 24);
+        if (bottom > maxBottom) maxBottom = bottom;
+      }
+    }
+    return Math.max(totalPx, maxBottom + 4);
+  }, [packedColumns, totalPx]);
 
   const hours = useMemo(() => {
     const arr: number[] = [];
@@ -642,6 +698,7 @@ export function CalendarBoard({
     const isPreviewDimmed = highlightedItemIds.size > 0 && !isPreviewHighlighted;
     const isHovered = hoveredBlock === block.key;
     const width = Math.max(24, 100 / block.laneCount - 3);
+    const isStackGroup = Boolean(block.stackGroupKey);
     const left = (block.lane * 100) / block.laneCount + 1.5;
 
     const matterId = block.itemIds
@@ -655,7 +712,16 @@ export function CalendarBoard({
     return (
       <div
         key={block.key}
-        draggable
+        draggable={!isStackGroup}
+        onClick={() => {
+          if (!block.stackGroupKey) return;
+          setExpandedStackKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(block.stackGroupKey!)) next.delete(block.stackGroupKey!);
+            else next.add(block.stackGroupKey!);
+            return next;
+          });
+        }}
         onDragStart={(e) => handleDragStart(e, block)}
         onDragEnd={handleDragEnd}
         onMouseEnter={() => setHoveredBlock(block.key)}
@@ -664,7 +730,7 @@ export function CalendarBoard({
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
-        } ${isHovered ? 'z-30 overflow-visible shadow-md' : 'overflow-hidden'}`}
+        } ${isStackGroup ? 'cursor-pointer' : ''} ${isHovered ? 'z-30 overflow-visible shadow-md' : 'overflow-hidden'}`}
         style={{
           top: topPx,
           height: isHovered ? 'auto' : heightPx,
@@ -688,8 +754,9 @@ export function CalendarBoard({
             </p>
           )}
           {block.isAggregate && heightPx >= 40 && (!hasMatter || heightPx >= 56) && (
-            <span className="mt-0.5 inline-block rounded bg-stone-200/70 px-1 text-[8px] font-semibold text-stone-600">
-              {block.itemIds.length} signals
+            <span className="mt-0.5 inline-flex items-center gap-0.5 rounded bg-stone-200/70 px-1 text-[8px] font-semibold text-stone-600">
+              {block.stackCount ?? block.itemIds.length} {block.stackCount ? 'activities' : 'signals'}
+              {block.stackGroupKey && <ChevronDown size={9} />}
             </span>
           )}
           {matter && matterColor && (
@@ -709,11 +776,11 @@ export function CalendarBoard({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div ref={scrollRef} className="flex-1 overflow-auto" onWheel={handleWheel}>
-        <div ref={boardRef} className="relative flex gap-0" style={{ minHeight: totalPx + 40 }}>
+        <div ref={boardRef} className="relative flex gap-0" style={{ minHeight: effectiveTotalPx + 40 }}>
           {/* Time gutter */}
           <div
             className="sticky left-0 z-20 w-12 shrink-0 bg-stone-50/80 backdrop-blur-sm"
-            style={{ height: totalPx, transition: `height ${TRANSITION_MS}ms ease-out` }}
+            style={{ height: effectiveTotalPx, transition: `height ${TRANSITION_MS}ms ease-out` }}
           >
             {hours.map((h) => {
               const top = minuteToPx(h * 60);
@@ -741,7 +808,7 @@ export function CalendarBoard({
             {/* Gap band overlay — spans full width of all columns */}
             <div
               className="absolute left-0 right-0 top-0 z-10"
-              style={{ height: totalPx, transition: `height ${TRANSITION_MS}ms ease-out`, pointerEvents: 'none' }}
+              style={{ height: effectiveTotalPx, transition: `height ${TRANSITION_MS}ms ease-out`, pointerEvents: 'none' }}
             >
               {gapSegments.map((gap) => {
                 const isCollapsed = gap.type === 'gap';
@@ -796,7 +863,7 @@ export function CalendarBoard({
                   {/* Grid */}
                   <div
                     className="relative"
-                    style={{ height: totalPx, transition: `height ${TRANSITION_MS}ms ease-out` }}
+                    style={{ height: effectiveTotalPx, transition: `height ${TRANSITION_MS}ms ease-out` }}
                   >
                     {/* Hour grid lines */}
                     {hours.map((h) => (
