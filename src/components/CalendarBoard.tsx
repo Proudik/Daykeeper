@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useCallback } from 'react';
-import type { ActivityItem, Matter, Provider } from '@/types';
+import type { ActivityItem, Matter } from '@/types';
 import {
   timestampToMinutes,
   minutesBetween,
@@ -17,7 +17,25 @@ import {
   Layers,
   CheckCircle2,
   Briefcase,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
+
+// ── Constants ─────────────────────────────────────────────────────────────
+
+const MIN_BLOCK_PX = 28;
+const MIN_HOUR_PX = 28;
+const MAX_HOUR_PX = 240;
+const DEFAULT_HOUR_PX = 56;
+const COLLAPSED_BAND_PX = 24;
+const MIN_GAP_FOR_COLLAPSE = 30;   // minutes — gaps >= this collapse
+const OVERLAP_TOLERANCE_MIN = 5;    // minutes — items starting within this of another ending "overlap"
+const MAX_LANES = 2;                // max side-by-side before stacking
+const GROUP_PROXIMITY_MIN = 20;     // minutes — max gap between consecutive items to be grouped
+const GROUP_MIN_ITEMS = 3;          // minimum items to form a group
+const MIN_DURATION_MIN = 5;         // minimum visual time range for a block
+const EXPANDED_ITEM_PX = 20;        // height per signal row inside an expanded card
+const EXPANDED_HEADER_PX = 32;      // header + padding inside an expanded card
 
 // ── Column definitions ────────────────────────────────────────────────────
 
@@ -58,9 +76,9 @@ function itemColumn(item: ActivityItem): ColumnKey {
   return 'other';
 }
 
-// ── Aggregation for SC Other and Browser ───────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────
 
-interface AggregatedGroup {
+interface SignalGroup {
   key: string;
   label: string;
   subLabel: string;
@@ -69,145 +87,328 @@ interface AggregatedGroup {
   endMin: number;
   totalMinutes: number;
   itemIds: string[];
+  items: ActivityItem[];
   caseId?: string;
   caseName?: string;
+  isGrouped: boolean;
 }
 
-function aggregateScOther(items: ActivityItem[], timezone?: string): AggregatedGroup[] {
-  const byCase = new Map<string, ActivityItem[]>();
-  for (const item of items) {
-    const caseKey = item.meta.caseId ?? '__no_case';
-    const list = byCase.get(caseKey) ?? [];
-    list.push(item);
-    byCase.set(caseKey, list);
-  }
-  const groups: AggregatedGroup[] = [];
-  for (const [caseKey, caseItems] of byCase) {
-    caseItems.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    const startMin = timestampToMinutes(caseItems[0].timestamp, timezone);
-    const last = caseItems[caseItems.length - 1];
-    const endMin = last.endTimestamp
-      ? timestampToMinutes(last.endTimestamp, timezone)
-      : startMin + (last.durationMinutes ?? 15);
-    const totalMinutes = caseItems.reduce(
-      (s, i) => s + (i.endTimestamp
-        ? minutesBetween(i.timestamp, i.endTimestamp, timezone)
-        : i.durationMinutes ?? 15),
-      0,
-    );
-    groups.push({
-      key: `sc-other-${caseKey}`,
-      label: caseItems[0].meta.caseName ?? caseItems[0].meta.caseIdVisible ?? 'SingleCase',
-      subLabel: `${caseItems.length} ${caseItems.length === 1 ? 'action' : 'actions'} · ${formatMinutes(totalMinutes)}`,
-      itemCount: caseItems.length,
-      startMin,
-      endMin: Math.max(endMin, startMin + 30),
-      totalMinutes,
-      itemIds: caseItems.map((i) => i.id),
-      caseId: caseItems[0].meta.caseId,
-      caseName: caseItems[0].meta.caseName,
-    });
-  }
-  return groups.sort((a, b) => a.startMin - b.startMin);
-}
-
-function aggregateBrowser(items: ActivityItem[], timezone?: string): AggregatedGroup[] {
-  const BLOCK_SIZE = 120;
-  const byBlock = new Map<number, ActivityItem[]>();
-  for (const item of items) {
-    const startMin = timestampToMinutes(item.timestamp, timezone);
-    const blockStart = Math.floor(startMin / BLOCK_SIZE) * BLOCK_SIZE;
-    const list = byBlock.get(blockStart) ?? [];
-    list.push(item);
-    byBlock.set(blockStart, list);
-  }
-  const groups: AggregatedGroup[] = [];
-  for (const [blockStart, blockItems] of byBlock) {
-    blockItems.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    const totalMinutes = blockItems.reduce(
-      (s, i) => s + (i.endTimestamp
-        ? minutesBetween(i.timestamp, i.endTimestamp, timezone)
-        : i.durationMinutes ?? 0),
-      0,
-    );
-    const domains = new Set(blockItems.map((i) => i.meta.fileName ?? i.summary));
-    const topDomains = Array.from(domains).slice(0, 3);
-    const earliestMin = timestampToMinutes(blockItems[0].timestamp, timezone);
-    const endMin = earliestMin + Math.max(totalMinutes, 15);
-    groups.push({
-      key: `browser-${blockStart}`,
-      label: topDomains.length > 0 ? topDomains.join(', ') : 'Browsing',
-      subLabel: `${blockItems.length} ${blockItems.length === 1 ? 'site' : 'sites'} · ${formatMinutes(totalMinutes)}`,
-      itemCount: blockItems.length,
-      startMin: earliestMin,
-      endMin: Math.max(endMin, earliestMin + 30),
-      totalMinutes,
-      itemIds: blockItems.map((i) => i.id),
-    });
-  }
-  return groups.sort((a, b) => a.startMin - b.startMin);
-}
-
-// ── Lane assignment for overlap stacking ────────────────────────────────────
-
-interface PlacedBlock {
-  key: string;
-  label: string;
-  subLabel: string;
-  startMin: number;
-  endMin: number;
-  lane: number;
-  laneCount: number;
+interface PlacedBlock extends SignalGroup {
   color: string;
-  itemIds: string[];
-  isAggregate: boolean;
-  caseId?: string;
-  caseName?: string;
-  isUsed?: boolean;
-  isInTimesheet?: boolean;
-  originalItem?: ActivityItem;
   column: ColumnKey;
+  isUsed: boolean;
+  isInTimesheet: boolean;
+  topPx: number;
+  heightPx: number;
+  leftPct: number;
+  widthPct: number;
 }
 
-function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]): { lane: number; laneCount: number }[] {
-  const sorted = blocks
-    .map((block, index) => ({ ...block, index }))
-    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
-  const laneEnds: number[] = [];
-  const result = blocks.map(() => ({ lane: 0, laneCount: 1 }));
+interface TimeSegment {
+  start: number;
+  end: number;
+}
 
-  for (const block of sorted) {
-    let lane = laneEnds.findIndex((end) => end <= block.startMin);
-    if (lane === -1) lane = laneEnds.length;
-    laneEnds[lane] = block.endMin;
-    result[block.index] = { lane, laneCount: 1 };
+interface TimeScale {
+  minuteToPx: (min: number) => number;
+  totalPx: number;
+  gaps: { start: number; end: number; topPx: number }[];
+  hourMarkers: { hour: number; topPx: number }[];
+}
+
+// ── Time helpers ───────────────────────────────────────────────────────────
+
+function itemStartMin(item: ActivityItem, tz?: string): number {
+  return timestampToMinutes(item.timestamp, tz);
+}
+
+function itemEndMin(item: ActivityItem, tz?: string): number {
+  return item.endTimestamp
+    ? timestampToMinutes(item.endTimestamp, tz)
+    : itemStartMin(item, tz) + (item.durationMinutes ?? 5);
+}
+
+function itemDuration(item: ActivityItem, tz?: string): number {
+  return item.endTimestamp
+    ? minutesBetween(item.timestamp, item.endTimestamp, tz)
+    : item.durationMinutes ?? 5;
+}
+
+// ── Grouping ───────────────────────────────────────────────────────────────
+
+function groupItems(items: ActivityItem[], timezone?: string): SignalGroup[] {
+  if (items.length === 0) return [];
+  const sorted = [...items].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+  // Cluster by time proximity
+  const clusters: ActivityItem[][] = [];
+  let cur: ActivityItem[] = [sorted[0]];
+  let curEnd = itemEndMin(sorted[0], timezone);
+  for (let i = 1; i < sorted.length; i++) {
+    const s = itemStartMin(sorted[i], timezone);
+    if (s - curEnd <= GROUP_PROXIMITY_MIN) {
+      cur.push(sorted[i]);
+      curEnd = Math.max(curEnd, itemEndMin(sorted[i], timezone));
+    } else {
+      clusters.push(cur);
+      cur = [sorted[i]];
+      curEnd = itemEndMin(sorted[i], timezone);
+    }
   }
+  clusters.push(cur);
 
-  const visited = new Set<number>();
-  for (let start = 0; start < blocks.length; start++) {
-    if (visited.has(start)) continue;
-
-    const group: number[] = [start];
-    visited.add(start);
-    for (let cursor = 0; cursor < group.length; cursor++) {
-      const current = blocks[group[cursor]];
-      for (let index = 0; index < blocks.length; index++) {
-        if (visited.has(index)) continue;
-        const candidate = blocks[index];
-        if (candidate.startMin < current.endMin && candidate.endMin > current.startMin) {
-          visited.add(index);
-          group.push(index);
+  const groups: SignalGroup[] = [];
+  for (const cluster of clusters) {
+    // For SC items, sub-group by caseId within the time cluster
+    const hasCase = cluster.some((i) => i.meta.caseId);
+    if (hasCase) {
+      const byCase = new Map<string, ActivityItem[]>();
+      for (const item of cluster) {
+        const k = item.meta.caseId ?? '__no_case';
+        const l = byCase.get(k) ?? [];
+        l.push(item);
+        byCase.set(k, l);
+      }
+      for (const [caseKey, caseItems] of byCase) {
+        if (caseItems.length >= GROUP_MIN_ITEMS) {
+          groups.push(makeGroup(caseItems, timezone, `case-${caseKey}-${cluster[0].id}`));
+        } else {
+          for (const item of caseItems) groups.push(makeSingle(item, timezone));
         }
       }
+    } else if (cluster.length >= GROUP_MIN_ITEMS) {
+      groups.push(makeGroup(cluster, timezone, `prox-${cluster[0].id}`));
+    } else {
+      for (const item of cluster) groups.push(makeSingle(item, timezone));
     }
+  }
+  return groups.sort((a, b) => a.startMin - b.startMin);
+}
 
-    const laneCount = Math.max(...group.map((index) => result[index].lane + 1), 1);
-    for (const index of group) {
-      result[index].laneCount = laneCount;
+function makeGroup(items: ActivityItem[], tz: string | undefined, key: string): SignalGroup {
+  const sorted = [...items].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const startMin = itemStartMin(sorted[0], tz);
+  const endMin = itemEndMin(sorted[sorted.length - 1], tz);
+  const totalMinutes = sorted.reduce((s, i) => s + itemDuration(i, tz), 0);
+  const label =
+    sorted[0].meta.caseName ??
+    sorted[0].meta.caseIdVisible ??
+    sorted[0].meta.subject ??
+    sorted[0].meta.title ??
+    sorted[0].summary;
+  const siteCount = new Set(sorted.map((i) => i.meta.fileName ?? i.summary)).size;
+  const subLabel =
+    sorted[0].provider === 'browser'
+      ? `${siteCount} ${siteCount === 1 ? 'site' : 'sites'} · ${sorted.length} ${sorted.length === 1 ? 'signal' : 'signals'} · ${formatMinutes(totalMinutes)}`
+      : `${sorted.length} ${sorted.length === 1 ? 'signal' : 'signals'} · ${formatMinutes(totalMinutes)}`;
+  return {
+    key,
+    label,
+    subLabel,
+    itemCount: sorted.length,
+    startMin,
+    endMin: Math.max(endMin, startMin + 15),
+    totalMinutes,
+    itemIds: sorted.map((i) => i.id),
+    items: sorted,
+    caseId: sorted[0].meta.caseId,
+    caseName: sorted[0].meta.caseName,
+    isGrouped: true,
+  };
+}
+
+function makeSingle(item: ActivityItem, tz: string | undefined): SignalGroup {
+  const startMin = itemStartMin(item, tz);
+  const endMin = Math.max(itemEndMin(item, tz), startMin + MIN_DURATION_MIN);
+  return {
+    key: item.id,
+    label: item.meta.subject ?? item.meta.title ?? item.meta.fileName ?? item.summary,
+    subLabel: item.endTimestamp
+      ? formatTimeRange(item.timestamp, item.endTimestamp, tz)
+      : formatTime(item.timestamp, tz),
+    itemCount: 1,
+    startMin,
+    endMin,
+    totalMinutes: itemDuration(item, tz),
+    itemIds: [item.id],
+    items: [item],
+    isGrouped: false,
+  };
+}
+
+// ── Time scale (non-linear with collapsed gaps) ────────────────────────────
+
+function computeActiveSegments(
+  allGroups: SignalGroup[][],
+  displayStart: number,
+  displayEnd: number,
+): TimeSegment[] {
+  const ranges: TimeSegment[] = [];
+  for (const groups of allGroups) {
+    for (const g of groups) {
+      const s = Math.max(g.startMin, displayStart);
+      const e = Math.min(g.endMin, displayEnd);
+      if (s < e) ranges.push({ start: s, end: e });
+    }
+  }
+  ranges.sort((a, b) => a.start - b.start);
+  if (ranges.length === 0) return [];
+
+  const merged: TimeSegment[] = [{ ...ranges[0] }];
+  for (let i = 1; i < ranges.length; i++) {
+    const last = merged[merged.length - 1];
+    if (ranges[i].start - last.end <= MIN_GAP_FOR_COLLAPSE) {
+      last.end = Math.max(last.end, ranges[i].end);
+    } else {
+      merged.push({ ...ranges[i] });
+    }
+  }
+  return merged;
+}
+
+function buildTimeScale(
+  segments: TimeSegment[],
+  displayStart: number,
+  displayEnd: number,
+  hourPx: number,
+): TimeScale {
+  let px = 0;
+  const gaps: { start: number; end: number; topPx: number }[] = [];
+  const segmentOffsets: { start: number; end: number; topPx: number }[] = [];
+  let prevEnd = displayStart;
+
+  for (const seg of segments) {
+    const gap = seg.start - prevEnd;
+    if (gap > 0) {
+      gaps.push({ start: prevEnd, end: seg.start, topPx: px });
+      px += COLLAPSED_BAND_PX;
+    }
+    segmentOffsets.push({ start: seg.start, end: seg.end, topPx: px });
+    px += ((seg.end - seg.start) / 60) * hourPx;
+    prevEnd = seg.end;
+  }
+  if (prevEnd < displayEnd) {
+    gaps.push({ start: prevEnd, end: displayEnd, topPx: px });
+    px += COLLAPSED_BAND_PX;
+  }
+
+  const minuteToPx = (min: number): number => {
+    for (const seg of segmentOffsets) {
+      if (min < seg.start) return seg.topPx;
+      if (min <= seg.end) return seg.topPx + ((min - seg.start) / 60) * hourPx;
+    }
+    return px;
+  };
+
+  const hourMarkers: { hour: number; topPx: number }[] = [];
+  for (const seg of segmentOffsets) {
+    const firstHour = Math.ceil(seg.start / 60);
+    const lastHour = Math.floor(seg.end / 60);
+    for (let h = firstHour; h <= lastHour; h++) {
+      const m = h * 60;
+      if (m >= seg.start && m <= seg.end) {
+        hourMarkers.push({ hour: h, topPx: seg.topPx + ((m - seg.start) / 60) * hourPx });
+      }
     }
   }
 
+  return { minuteToPx, totalPx: px, gaps, hourMarkers };
+}
+
+// ── Layout (lane splitting + stacking with push-down) ──────────────────────
+
+function computeOverlapGroups(groups: SignalGroup[]): SignalGroup[][] {
+  const sorted = [...groups].sort((a, b) => a.startMin - b.startMin);
+  if (sorted.length === 0) return [];
+  const result: SignalGroup[][] = [];
+  let cur: SignalGroup[] = [sorted[0]];
+  let curEnd = sorted[0].endMin;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].startMin - curEnd <= OVERLAP_TOLERANCE_MIN) {
+      cur.push(sorted[i]);
+      curEnd = Math.max(curEnd, sorted[i].endMin);
+    } else {
+      result.push(cur);
+      cur = [sorted[i]];
+      curEnd = sorted[i].endMin;
+    }
+  }
+  result.push(cur);
   return result;
+}
+
+function blockHeight(
+  g: SignalGroup,
+  ts: TimeScale,
+  expandedGroups: Set<string>,
+): number {
+  const durPx = Math.max(MIN_BLOCK_PX, ts.minuteToPx(g.endMin) - ts.minuteToPx(g.startMin));
+  const expPx =
+    g.isGrouped && expandedGroups.has(g.key)
+      ? g.items.length * EXPANDED_ITEM_PX + EXPANDED_HEADER_PX
+      : 0;
+  return Math.max(durPx, expPx);
+}
+
+function layoutColumn(
+  groups: SignalGroup[],
+  ts: TimeScale,
+  expandedGroups: Set<string>,
+  color: string,
+  column: ColumnKey,
+  usedItemIds: Set<string>,
+  generatedItemIds: Set<string>,
+): PlacedBlock[] {
+  if (groups.length === 0) return [];
+  const overlapGroups = computeOverlapGroups(groups);
+  const blocks: PlacedBlock[] = [];
+  const laneBottoms: number[] = [0, 0];
+
+  for (const og of overlapGroups) {
+    if (og.length <= MAX_LANES) {
+      // Split into lanes (1 = full width, 2 = side by side)
+      for (let i = 0; i < og.length; i++) {
+        const g = og[i];
+        const trueTop = ts.minuteToPx(g.startMin);
+        const top = Math.max(trueTop, laneBottoms[i]);
+        const height = blockHeight(g, ts, expandedGroups);
+        laneBottoms[i] = top + height;
+        blocks.push({
+          ...g,
+          color,
+          column,
+          isUsed: g.itemIds.every((id) => usedItemIds.has(id)),
+          isInTimesheet: g.itemIds.some((id) => generatedItemIds.has(id)),
+          topPx: top,
+          heightPx: height,
+          leftPct: og.length === 1 ? 0 : (i * 100) / og.length + 1,
+          widthPct: og.length === 1 ? 100 : 100 / og.length - 2,
+        });
+      }
+    } else {
+      // Stack vertically — all full width, in start order
+      let prevBottom = laneBottoms[0];
+      for (const g of og) {
+        const trueTop = ts.minuteToPx(g.startMin);
+        const top = Math.max(trueTop, prevBottom);
+        const height = blockHeight(g, ts, expandedGroups);
+        prevBottom = top + height;
+        laneBottoms[0] = prevBottom;
+        blocks.push({
+          ...g,
+          color,
+          column,
+          isUsed: g.itemIds.every((id) => usedItemIds.has(id)),
+          isInTimesheet: g.itemIds.some((id) => generatedItemIds.has(id)),
+          topPx: top,
+          heightPx: height,
+          leftPct: 0,
+          widthPct: 100,
+        });
+      }
+    }
+  }
+  return blocks;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -228,12 +429,6 @@ interface CalendarBoardProps {
   onConnectGroup: (itemIds: string[]) => void;
 }
 
-const MIN_BLOCK_PX = 24;
-const MIN_DURATION_MIN = 15;
-const MIN_HOUR_PX = 28;
-const MAX_HOUR_PX = 240;
-const DEFAULT_HOUR_PX = 56;
-
 export function CalendarBoard({
   items,
   matters,
@@ -245,24 +440,23 @@ export function CalendarBoard({
   highlightedItemIds,
   manualOverrides,
   onAssign: _onAssign,
-  onDropGroup,
+  onDropGroup: _onDropGroup,
   onHoverEntry,
   onConnectGroup: _onConnectGroup,
 }: CalendarBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [hoveredBlock, setHoveredBlock] = useState<string | null>(null);
   const [hourPx, setHourPx] = useState(DEFAULT_HOUR_PX);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
 
-  // Cmd/Ctrl + scroll to zoom the calendar time scale
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (!e.metaKey && !e.ctrlKey) return;
     e.preventDefault();
-    setHourPx((prev) => {
-      const next = Math.round(prev + (e.deltaY < 0 ? 8 : -8));
-      return Math.max(MIN_HOUR_PX, Math.min(MAX_HOUR_PX, next));
-    });
+    setHourPx((prev) =>
+      Math.max(MIN_HOUR_PX, Math.min(MAX_HOUR_PX, Math.round(prev + (e.deltaY < 0 ? 8 : -8)))),
+    );
   }, []);
 
   const workStartMin = parseHHmm(workStart);
@@ -270,8 +464,50 @@ export function CalendarBoard({
   const baseDisplayStart = Math.floor(workStartMin / 60) * 60;
   const baseDisplayEnd = Math.ceil(workEndMin / 60) * 60;
 
-  // Build column data
-  const columns = useMemo(() => {
+  // Group items per column
+  const columnGroups = useMemo(() => {
+    const result: Record<ColumnKey, SignalGroup[]> = {
+      calendar: [],
+      email_sent: [],
+      sc_doc: [],
+      sc_other: [],
+      browser: [],
+      other: [],
+    };
+    for (const colDef of COLUMNS) {
+      const colItems = items.filter((i) => itemColumn(i) === colDef.key);
+      result[colDef.key] = groupItems(colItems, timezone);
+    }
+    return result;
+  }, [items, timezone]);
+
+  const allGroups = useMemo(() => COLUMNS.map((c) => columnGroups[c.key]), [columnGroups]);
+
+  // Extend display range to include all items
+  const { displayStart, displayEnd } = useMemo(() => {
+    let start = baseDisplayStart;
+    let end = baseDisplayEnd;
+    for (const groups of allGroups) {
+      for (const g of groups) {
+        if (g.startMin < start) start = Math.floor(g.startMin / 60) * 60;
+        if (g.endMin > end) end = Math.ceil(g.endMin / 60) * 60;
+      }
+    }
+    return { displayStart: start, displayEnd: end };
+  }, [allGroups, baseDisplayStart, baseDisplayEnd]);
+
+  const activeSegments = useMemo(
+    () => computeActiveSegments(allGroups, displayStart, displayEnd),
+    [allGroups, displayStart, displayEnd],
+  );
+
+  const timeScale = useMemo(
+    () => buildTimeScale(activeSegments, displayStart, displayEnd, hourPx),
+    [activeSegments, displayStart, displayEnd, hourPx],
+  );
+
+  // Layout blocks per column
+  const columnBlocks = useMemo(() => {
     const result: Record<ColumnKey, PlacedBlock[]> = {
       calendar: [],
       email_sent: [],
@@ -280,157 +516,54 @@ export function CalendarBoard({
       browser: [],
       other: [],
     };
-
     for (const colDef of COLUMNS) {
-      const colItems = items.filter((i) => itemColumn(i) === colDef.key);
-
-      if (colDef.key === 'sc_other') {
-        const groups = aggregateScOther(colItems, timezone);
-        const laneAssignments = assignLanes(groups);
-        result.sc_other = groups.map((g, i) => ({
-          key: g.key,
-          label: g.label,
-          subLabel: g.subLabel,
-          startMin: g.startMin,
-          endMin: g.endMin,
-          lane: laneAssignments[i].lane,
-          laneCount: laneAssignments[i].laneCount,
-          color: colDef.color,
-          itemIds: g.itemIds,
-          isAggregate: true,
-          caseId: g.caseId,
-          caseName: g.caseName,
-          column: colDef.key,
-          isUsed: g.itemIds.every((id) => usedItemIds.has(id)),
-          isInTimesheet: g.itemIds.some((id) => generatedItemIds.has(id)),
-        }));
-        continue;
-      }
-
-      if (colDef.key === 'browser') {
-        const groups = aggregateBrowser(colItems, timezone);
-        const laneAssignments = assignLanes(groups);
-        result.browser = groups.map((g, i) => ({
-          key: g.key,
-          label: g.label,
-          subLabel: g.subLabel,
-          startMin: g.startMin,
-          endMin: g.endMin,
-          lane: laneAssignments[i].lane,
-          laneCount: laneAssignments[i].laneCount,
-          color: colDef.color,
-          itemIds: g.itemIds,
-          isAggregate: true,
-          column: colDef.key,
-          isUsed: g.itemIds.every((id) => usedItemIds.has(id)),
-          isInTimesheet: g.itemIds.some((id) => generatedItemIds.has(id)),
-        }));
-        continue;
-      }
-
-      const blockItems = colItems.map((item) => {
-        const sMin = timestampToMinutes(item.timestamp, timezone);
-        const eMin = item.endTimestamp
-          ? timestampToMinutes(item.endTimestamp, timezone)
-          : sMin + (item.durationMinutes ?? 15);
-        const duration = eMin - sMin;
-        const assignedMatterId = manualOverrides.get(item.id);
-        const assignedBlockMinutes = Math.ceil((64 / hourPx) * 60);
-        const minimumDuration = assignedMatterId ? assignedBlockMinutes : MIN_DURATION_MIN;
-        const visualEnd = duration < minimumDuration ? sMin + minimumDuration : eMin;
-        return { item, startMin: sMin, endMin: visualEnd, key: item.id };
-      });
-
-      const laneAssignments = assignLanes(blockItems);
-      result[colDef.key] = blockItems.map((b, i) => ({
-        key: b.key,
-        label: b.item.meta.subject ?? b.item.meta.title ?? b.item.meta.fileName ?? b.item.summary,
-        subLabel: b.item.endTimestamp
-          ? formatTimeRange(b.item.timestamp, b.item.endTimestamp, timezone)
-          : formatTime(b.item.timestamp, timezone),
-        startMin: b.startMin,
-        endMin: b.endMin,
-        lane: laneAssignments[i].lane,
-        laneCount: laneAssignments[i].laneCount,
-        color: colDef.color,
-        itemIds: [b.item.id],
-        isAggregate: false,
-        originalItem: b.item,
-        column: colDef.key,
-        isUsed: usedItemIds.has(b.item.id),
-        isInTimesheet: generatedItemIds.has(b.item.id),
-      }));
+      result[colDef.key] = layoutColumn(
+        columnGroups[colDef.key],
+        timeScale,
+        expandedGroups,
+        colDef.color,
+        colDef.key,
+        usedItemIds,
+        generatedItemIds,
+      );
     }
-
     return result;
-  }, [items, timezone, usedItemIds, generatedItemIds, manualOverrides, hourPx]);
+  }, [columnGroups, timeScale, expandedGroups, usedItemIds, generatedItemIds]);
 
-  // Extend the display range to include all items so signals outside
-  // working hours are still visible on the grid.
-  const { displayStart, displayEnd } = useMemo(() => {
-    let start = baseDisplayStart;
-    let end = baseDisplayEnd;
-    for (const col of COLUMNS) {
-      for (const block of columns[col.key]) {
-        if (block.startMin < start) start = Math.floor(block.startMin / 60) * 60;
-        if (block.endMin > end) end = Math.ceil(block.endMin / 60) * 60;
-      }
-    }
-    return { displayStart: start, displayEnd: end };
-  }, [columns, baseDisplayStart, baseDisplayEnd]);
-  const totalPx = ((displayEnd - displayStart) / 60) * hourPx + 8;
-
-  // All blocks flat
-  const allBlocks = useMemo(() => {
-    return COLUMNS.flatMap((c) => columns[c.key]);
-  }, [columns]);
-
-  // Get all item IDs to drag when dragging a block
-  const getDragGroupIds = useCallback((block: PlacedBlock): string[] => {
-    return block.itemIds;
-  }, []);
-
-  // Hour markers
-  const hours = useMemo(() => {
-    const arr: number[] = [];
-    for (let h = displayStart / 60; h < displayEnd / 60; h++) {
-      arr.push(h);
-    }
-    return arr;
-  }, [displayStart, displayEnd]);
-
-  // Recent matters as buckets
   // Drag handlers
   const handleDragStart = useCallback((e: React.DragEvent, block: PlacedBlock) => {
-    const groupIds = getDragGroupIds(block);
-    const payload = JSON.stringify(groupIds);
-    e.dataTransfer.setData('text/daykeeper-items', payload);
+    e.dataTransfer.setData('text/daykeeper-items', JSON.stringify(block.itemIds));
     e.dataTransfer.setData('text/daykeeper-item', block.itemIds[0]);
     e.dataTransfer.effectAllowed = 'move';
     setDraggingId(block.key);
-  }, [getDragGroupIds]);
-
-  const handleDragEnd = useCallback(() => {
-    setDraggingId(null);
   }, []);
 
+  const handleDragEnd = useCallback(() => setDraggingId(null), []);
 
+  const toggleExpand = useCallback((key: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   // Render a single block
   function renderBlock(block: PlacedBlock) {
-    const topPx = ((block.startMin - displayStart) / 60) * hourPx;
-    const heightPx = Math.max(MIN_BLOCK_PX, ((block.endMin - block.startMin) / 60) * hourPx);
-    // Highlight from timesheet preview hover
-    const isPreviewHighlighted = highlightedItemIds.size > 0 && block.itemIds.some((id) => highlightedItemIds.has(id));
-    const isPreviewDimmed = highlightedItemIds.size > 0 && !isPreviewHighlighted;
     const isHovered = hoveredBlock === block.key;
-    const width = Math.max(24, 100 / block.laneCount - 3);
-    const left = (block.lane * 100) / block.laneCount + 1.5;
+    const isExpanded = block.isGrouped && expandedGroups.has(block.key);
+    const isPreviewHighlighted =
+      highlightedItemIds.size > 0 && block.itemIds.some((id) => highlightedItemIds.has(id));
+    const isPreviewDimmed = highlightedItemIds.size > 0 && !isPreviewHighlighted;
 
-    const matterId = block.itemIds.map((id) => manualOverrides.get(id)).find((v) => v !== undefined && v !== null);
+    const matterId = block.itemIds
+      .map((id) => manualOverrides.get(id))
+      .find((v) => v !== undefined && v !== null);
     const matter = matterId ? matters.find((m) => m.id === matterId) : null;
-    const matterColor = matter ? MATTER_PALETTE[matters.indexOf(matter) % MATTER_PALETTE.length] : null;
-    const expandedWidth = Math.min(92, Math.max(width, 48));
+    const matterColor = matter
+      ? MATTER_PALETTE[matters.indexOf(matter) % MATTER_PALETTE.length]
+      : null;
 
     return (
       <div
@@ -438,73 +571,132 @@ export function CalendarBoard({
         draggable
         onDragStart={(e) => handleDragStart(e, block)}
         onDragEnd={handleDragEnd}
+        onClick={
+          block.isGrouped
+            ? (e) => {
+                e.stopPropagation();
+                toggleExpand(block.key);
+              }
+            : undefined
+        }
         onMouseEnter={() => {
           setHoveredBlock(block.key);
+          onHoverEntry(block.itemIds);
         }}
         onMouseLeave={() => {
           setHoveredBlock(null);
+          onHoverEntry(null);
         }}
         className={`group absolute z-10 cursor-grab rounded-md border text-left transition-all duration-150 ${
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
-        } ${isHovered ? 'z-30 overflow-visible shadow-md' : 'overflow-hidden'}`}
+        } ${isHovered ? 'z-30 overflow-visible shadow-md' : isExpanded ? 'overflow-visible' : 'overflow-hidden'}`}
         style={{
-          top: topPx,
-          height: isHovered ? 'auto' : heightPx,
-          minHeight: heightPx,
-          left: `${left}%`,
-          width: `${isHovered ? expandedWidth : width}%`,
+          top: block.topPx,
+          left: `${block.leftPct}%`,
+          width: `${block.widthPct}%`,
+          minHeight: block.heightPx,
+          height: isExpanded ? 'auto' : block.heightPx,
           borderColor: block.color,
-          backgroundColor: isHovered ? '#ffffff' : block.isInTimesheet ? `${block.color}55` : `${block.color}18`,
+          backgroundColor: isHovered
+            ? '#ffffff'
+            : block.isInTimesheet
+              ? `${block.color}55`
+              : `${block.color}18`,
         }}
       >
-        <div className="relative min-h-full border-l-[3px] px-1.5 py-1" style={{ borderColor: block.color }}>
-          {heightPx >= 20 && (
-            <p className={`text-[10px] font-medium leading-tight text-stone-700 ${isHovered ? 'break-words' : 'truncate'}`}>
-              {block.label}
-            </p>
-          )}
-          {heightPx >= 34 && (
-            <p className={`text-[9px] leading-tight text-stone-500 ${isHovered ? 'break-words' : 'truncate'}`}>
+        <div
+          className="relative min-h-full border-l-[3px] px-1.5 py-1"
+          style={{ borderColor: block.color }}
+        >
+          {/* Header row: label + count + chevron */}
+          <div className="flex items-center gap-1">
+            {block.heightPx >= 20 && (
+              <p className="flex-1 truncate text-[10px] font-medium leading-tight text-stone-700">
+                {block.label}
+              </p>
+            )}
+            {block.isGrouped && (
+              <span className="shrink-0 rounded bg-stone-200/70 px-1 text-[8px] font-semibold text-stone-600">
+                {block.itemCount}
+              </span>
+            )}
+            {block.isGrouped &&
+              (isExpanded ? (
+                <ChevronUp size={10} className="shrink-0 text-stone-400" />
+              ) : (
+                <ChevronDown size={10} className="shrink-0 text-stone-400" />
+              ))}
+          </div>
+
+          {/* Sub-label (time range) — hidden when expanded */}
+          {block.heightPx >= 34 && !isExpanded && (
+            <p className="truncate text-[9px] leading-tight text-stone-500">
               {block.subLabel}
             </p>
           )}
-          {block.isAggregate && heightPx >= 40 && (
-            <span className="mt-0.5 inline-block rounded bg-stone-200/70 px-1 text-[8px] font-semibold text-stone-600">
-              {block.itemIds.length} signals
-            </span>
-          )}
-          {matter && matterColor && (
-            <div className="mt-0.5 flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm" style={{ backgroundColor: matterColor }}>
-              <Briefcase size={7} className="shrink-0" />
-              <span className={isHovered ? 'break-words' : 'truncate'}>{matter.name}</span>
+
+          {/* Expanded signal list */}
+          {isExpanded && (
+            <div className="mt-1 space-y-0.5 border-t border-stone-200/50 pt-1">
+              {block.items.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-1.5 text-[9px] text-stone-600"
+                >
+                  <span className="shrink-0 font-mono text-stone-400">
+                    {formatTime(item.timestamp, timezone)}
+                  </span>
+                  <span className="truncate">
+                    {item.meta.subject ??
+                      item.meta.title ??
+                      item.meta.fileName ??
+                      item.summary}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
+
+          {/* Matter badge */}
+          {matter && matterColor && (
+            <div
+              className="mt-0.5 flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm"
+              style={{ backgroundColor: matterColor }}
+            >
+              <Briefcase size={7} className="shrink-0" />
+              <span className="truncate">{matter.name}</span>
+            </div>
+          )}
+
+          {/* Used indicator */}
           {block.isUsed && (
             <CheckCircle2 size={10} className="absolute right-1 top-1 text-emerald-600" />
           )}
         </div>
-
       </div>
     );
   }
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Calendar board — scrollable */}
       <div ref={scrollRef} className="flex-1 overflow-auto" onWheel={handleWheel}>
-        <div ref={boardRef} className="relative flex gap-0" style={{ minHeight: totalPx + 40 }}>
+        <div
+          ref={boardRef}
+          className="relative flex"
+          style={{ minHeight: timeScale.totalPx + 40 }}
+        >
           {/* Time gutter */}
           <div className="sticky left-0 z-20 w-12 shrink-0 bg-stone-50/80 backdrop-blur-sm">
-            {hours.map((h) => (
+            {timeScale.hourMarkers.map(({ hour, topPx }) => (
               <div
-                key={h}
-                className="relative border-t border-stone-100 text-right"
-                style={{ height: hourPx }}
+                key={hour}
+                className="absolute right-1.5"
+                style={{ top: topPx - 6 }}
               >
-                <span className="absolute -top-1.5 right-1.5 rounded bg-white px-0.5 text-[9px] font-medium text-stone-400">
-                  {String(h % 24).padStart(2, '0')}:00
+                <span className="rounded bg-white px-0.5 text-[9px] font-medium text-stone-400">
+                  {String(hour % 24).padStart(2, '0')}:00
                 </span>
               </div>
             ))}
@@ -512,10 +704,13 @@ export function CalendarBoard({
 
           {/* Columns */}
           {COLUMNS.map((colDef) => {
-            const colBlocks = columns[colDef.key];
+            const colBlocks = columnBlocks[colDef.key];
             const Icon = colDef.icon;
             return (
-              <div key={colDef.key} className="relative flex-1 border-l border-stone-200">
+              <div
+                key={colDef.key}
+                className="relative flex-1 border-l border-stone-200"
+              >
                 {/* Column header */}
                 <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-stone-200 bg-stone-50/90 px-2 py-1.5 backdrop-blur-sm">
                   <Icon size={12} style={{ color: colDef.color }} />
@@ -527,13 +722,14 @@ export function CalendarBoard({
                   </span>
                 </div>
 
-                {/* Hour grid lines */}
-                <div className="relative" style={{ height: totalPx }}>
-                  {hours.map((h) => (
+                {/* Column body */}
+                <div className="relative" style={{ height: timeScale.totalPx }}>
+                  {/* Hour grid lines */}
+                  {timeScale.hourMarkers.map(({ hour, topPx }) => (
                     <div
-                      key={h}
+                      key={hour}
                       className="absolute left-0 right-0 border-t border-stone-100"
-                      style={{ top: ((h * 60 - displayStart) / 60) * hourPx }}
+                      style={{ top: topPx }}
                     />
                   ))}
 
@@ -543,9 +739,21 @@ export function CalendarBoard({
               </div>
             );
           })}
+
+          {/* Collapsed bands — behind columns, spanning full width */}
+          {timeScale.gaps.map((gap) => (
+            <div
+              key={`gap-${gap.start}-${gap.end}`}
+              className="pointer-events-none absolute left-12 right-0 z-0 flex items-center justify-center border-t border-b border-dashed border-stone-300"
+              style={{ top: gap.topPx, height: COLLAPSED_BAND_PX }}
+            >
+              <span className="text-[10px] text-stone-400">
+                {formatMinutes(gap.end - gap.start)} — no activity
+              </span>
+            </div>
+          ))}
         </div>
       </div>
-
     </div>
   );
 }
