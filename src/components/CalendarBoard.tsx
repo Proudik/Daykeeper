@@ -330,6 +330,45 @@ function computeMinHeight(block: PlacedBlock, manualOverrides: Map<string, strin
   return hasMatter ? 40 : 24;
 }
 
+function extendForStackedLayout(
+  blocks: PlacedBlock[],
+  manualOverrides: Map<string, string | null>,
+  hourPx: number,
+): { startMin: number; endMin: number }[] {
+  const sorted = [...blocks].sort((a, b) => a.startMin - b.startMin);
+  const result = sorted.map((block) => ({ startMin: block.startMin, endMin: block.endMin }));
+  let groupStart = -Infinity;
+  let groupEnd = -Infinity;
+  let groupIndexes: number[] = [];
+  const stackIntervals: { startMin: number; endMin: number }[] = [];
+
+  const flush = () => {
+    if (groupIndexes.length <= MAX_LANES) return;
+    const requiredPx = groupIndexes.reduce((sum, index) => {
+      return sum + computeMinHeight(sorted[index], manualOverrides);
+    }, 0) + (groupIndexes.length - 1) * 2;
+    const requiredEnd = groupStart + (requiredPx / hourPx) * 60;
+    stackIntervals.push({ startMin: groupStart, endMin: Math.max(groupEnd, requiredEnd) });
+  };
+
+  for (let index = 0; index < sorted.length; index++) {
+    const block = sorted[index];
+    if (groupIndexes.length === 0 || block.startMin <= groupEnd + OVERLAP_TOLERANCE_MIN) {
+      groupIndexes.push(index);
+      groupStart = groupIndexes.length === 1 ? block.startMin : groupStart;
+      groupEnd = Math.max(groupEnd, block.endMin);
+    } else {
+      flush();
+      groupIndexes = [index];
+      groupStart = block.startMin;
+      groupEnd = block.endMin;
+    }
+  }
+  flush();
+
+  return [...result, ...stackIntervals];
+}
+
 function packColumn(
   blocks: PlacedBlock[],
   minuteToPx: (min: number) => number,
@@ -539,15 +578,14 @@ export function CalendarBoard({
     return { displayStart: start, displayEnd: end };
   }, [rawColumns, baseDisplayStart, baseDisplayEnd]);
 
-  const allRawBlocks = useMemo(
-    () => COLUMNS.flatMap((c) => rawColumns[c.key]),
-    [rawColumns],
-  );
+  const scaleBlocks = useMemo(() => {
+    return COLUMNS.flatMap((column) => extendForStackedLayout(rawColumns[column.key], manualOverrides, hourPx));
+  }, [rawColumns, manualOverrides, hourPx]);
 
-  // Build non-linear scale
+  // Build non-linear scale after accounting for the vertical space needed by stacks.
   const { segments, gapSegments, minuteToPx, totalPx } = useMemo(
-    () => buildScale(allRawBlocks, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx),
-    [allRawBlocks, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx],
+    () => buildScale(scaleBlocks, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx),
+    [scaleBlocks, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx],
   );
 
   // Pack each column with stacking
@@ -701,7 +739,7 @@ export function CalendarBoard({
           <div className="relative flex flex-1">
             {/* Gap band overlay — spans full width of all columns */}
             <div
-              className="absolute left-0 right-0 top-0 z-0"
+              className="absolute left-0 right-0 top-0 z-10"
               style={{ height: totalPx, transition: `height ${TRANSITION_MS}ms ease-out`, pointerEvents: 'none' }}
             >
               {gapSegments.map((gap) => {
@@ -711,7 +749,7 @@ export function CalendarBoard({
                 return (
                   <div
                     key={gap.gapId}
-                    className="absolute left-0 right-0 cursor-pointer border-t border-b border-dashed border-stone-300 bg-stone-50/50 hover:bg-stone-100/70"
+                    className="absolute left-0 right-0 cursor-pointer border-t border-b border-dashed border-stone-300 bg-stone-100/90 hover:bg-stone-200/90"
                     style={{
                       top,
                       height: isCollapsed ? COLLAPSED_BAND_PX : 0,
@@ -738,7 +776,7 @@ export function CalendarBoard({
               const colBlocks = packedColumns[colDef.key];
               const Icon = colDef.icon;
               return (
-                <div key={colDef.key} className="relative flex-1 border-l border-stone-200">
+                <div key={colDef.key} className="relative z-0 flex-1 border-l border-stone-200">
                   {/* Column header */}
                   <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-stone-200 bg-stone-50/90 px-2 py-1.5 backdrop-blur-sm">
                     <Icon size={12} style={{ color: colDef.color }} />
