@@ -1260,7 +1260,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             onHoverEntry={(itemIds) => setHoveredEntryItemIds(itemIds ? new Set(itemIds) : new Set())}
           />
           {pendingDropSession && pendingDropItemId && (
-            <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/20 sm:right-5 sm:top-5 sm:inset-auto sm:items-start sm:justify-start">
+            <div className="absolute inset-0 z-30 flex items-end justify-center bg-stone-900/40 backdrop-blur-sm sm:right-5 sm:top-5 sm:inset-auto sm:items-start sm:justify-start sm:bg-stone-900/20">
               <MatterPicker
                 anchorId={pendingDropItemId}
                 candidates={pendingDropSession.candidates}

@@ -136,7 +136,13 @@ export function MatterPicker({
   const firstSearchIndex = rows.findIndex((r) => r.kind === 'matter' && r.section === 'search');
 
   return (
-    <div ref={rootRef} className="w-full max-w-[340px] overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-200/60 sm:w-[340px]">
+    <div ref={rootRef} className="w-full max-w-[340px] overflow-hidden rounded-2xl border border-stone-300 bg-white shadow-2xl shadow-stone-400/40 ring-1 ring-stone-900/5 sm:w-[340px] animate-scale-in">
+
+      {/* Header */}
+      <div className="flex items-center gap-2 border-b border-stone-200 bg-stone-50/80 px-3 py-2">
+        <Briefcase size={13} className="shrink-0 text-stone-500" />
+        <span className="text-xs font-semibold text-stone-600">Assign to case</span>
+      </div>
 
       {/* Search input */}
       <div className="flex items-center gap-2 border-b border-stone-100 px-3 py-2.5">
