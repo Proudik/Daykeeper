@@ -728,7 +728,7 @@ export function CalendarBoard({
         onDragEnd={handleDragEnd}
         onMouseEnter={() => setHoveredBlock(block.key)}
         onMouseLeave={() => setHoveredBlock(null)}
-        className={`group absolute z-10 cursor-grab rounded-md border text-left ${
+        className={`group absolute z-10 cursor-grab rounded-lg border text-left shadow-[0_1px_2px_rgba(28,25,23,0.08)] ${
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
@@ -755,7 +755,7 @@ export function CalendarBoard({
               {block.subLabel}
             </p>
           )}
-          {block.isAggregate && heightPx >= 40 && (!hasMatter || heightPx >= 56) && (
+          {block.isAggregate && heightPx >= 56 && (!hasMatter || heightPx >= 64) && (
             <span className="mt-0.5 inline-flex items-center gap-0.5 rounded bg-stone-200/70 px-1 text-[8px] font-semibold text-stone-600">
               {block.stackCount ?? block.itemIds.length} {block.stackCount ? 'activities' : 'signals'}
               {block.stackGroupKey && <ChevronDown size={9} />}
@@ -797,7 +797,7 @@ export function CalendarBoard({
                     opacity: hidden ? 0 : 1,
                   }}
                 >
-                  <span className="absolute -top-1.5 right-1.5 rounded bg-white px-0.5 text-[9px] font-medium text-stone-400">
+                  <span className="absolute top-1 right-1.5 rounded bg-white/90 px-1 text-[9px] font-medium text-stone-500 shadow-sm">
                     {String(h % 24).padStart(2, '0')}:00
                   </span>
                 </div>
