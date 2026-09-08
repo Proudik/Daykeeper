@@ -18,7 +18,6 @@ import {
   Mail,
   Globe,
   Clock,
-  EyeOff,
   Tag,
   ChevronUp,
   Plus,
@@ -324,11 +323,6 @@ export function AssignmentTray({
     setBulkSelected(new Set());
   }
 
-  function bulkIgnore() {
-    for (const id of bulkSelected) handleIgnore(id);
-    setBulkSelected(new Set());
-  }
-
   // Keyboard navigation
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -607,22 +601,7 @@ export function AssignmentTray({
                 {matter.name}
               </span>
             </button>
-          ) : isNonBillable ? (
-            <span className="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
-              Non-billable
-            </span>
-          ) : (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleIgnore(item.id);
-              }}
-              className="shrink-0 rounded-full border border-stone-200 bg-white px-2 py-0.5 text-xs text-stone-400 transition-colors hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600"
-              title="Ignore this item"
-            >
-              <EyeOff size={12} />
-            </button>
-          )}
+          ) : null}
           {(assignments.has(item.id) || status.has(item.id)) && (
             <button
               onClick={(e) => { e.stopPropagation(); handleUndo(item.id); }}
@@ -642,8 +621,6 @@ export function AssignmentTray({
               recentMatterIds={recentMatterIds}
               currentMatterId={matterId}
               onAssign={(mid) => handleAssign(item.id, mid)}
-              onNonBillable={() => handleNonBillable(item.id)}
-              onIgnore={() => handleIgnore(item.id)}
               onClose={() => setOpenPickerId(null)}
               onCreateRule={(rule) => handleCreateRule(item.id, rule.rule_type, rule.value, rule.matter_id)}
             />
@@ -712,9 +689,7 @@ export function AssignmentTray({
           onNonBillableAll={() => {
             for (const item of cluster.items) handleNonBillable(item.id);
           }}
-          onIgnoreAll={() => {
-            for (const item of cluster.items) handleIgnore(item.id);
-          }}
+
         />
       ))}
 
@@ -887,12 +862,6 @@ export function AssignmentTray({
               className="btn-secondary text-sm"
             >
               <FolderOpen size={14} /> Mark non-billable
-            </button>
-            <button
-              onClick={bulkIgnore}
-              className="btn-secondary text-sm"
-            >
-              <X size={14} /> Ignore
             </button>
           </div>
         </div>
@@ -1071,14 +1040,12 @@ function ClusterGroup({
   matters,
   onAssignAll,
   onNonBillableAll,
-  onIgnoreAll,
 }: {
   label: string;
   items: ActivityItem[];
   matters: Matter[];
   onAssignAll: (matterId: string) => void;
   onNonBillableAll: () => void;
-  onIgnoreAll: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [showAssignMenu, setShowAssignMenu] = useState(false);
@@ -1125,12 +1092,6 @@ function ClusterGroup({
             className="rounded-md bg-stone-100 px-2 py-1 text-xs text-stone-600 hover:bg-stone-200"
           >
             Non-billable
-          </button>
-          <button
-            onClick={onIgnoreAll}
-            className="rounded-md bg-stone-100 px-2 py-1 text-xs text-stone-600 hover:bg-stone-200"
-          >
-            Ignore
           </button>
         </div>
       </button>

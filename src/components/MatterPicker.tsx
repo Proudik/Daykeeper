@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import type { Matter, MatterRuleType } from '@/types';
 import type { ScoredCandidate } from '@/lib/attribution/scoring-resolver';
 import { getClientName } from '@/lib/attribution/resolver-data';
-import { Search, Briefcase, EyeOff, Check, Tag } from 'lucide-react';
+import { Search, Briefcase, Check, Tag } from 'lucide-react';
 
 export interface MatterPickerProps {
   anchorId: string;
@@ -12,17 +12,13 @@ export interface MatterPickerProps {
   recentMatterIds: string[];
   currentMatterId: string | null;
   onAssign: (matterId: string) => void;
-  onNonBillable: () => void;
-  onIgnore: () => void;
   onClose: () => void;
   onCreateRule?: (rule: { rule_type: MatterRuleType; value: string; matter_id: string }) => void;
 }
 
 type RowItem =
   | { kind: 'candidate'; candidate: ScoredCandidate }
-  | { kind: 'matter'; matter: Matter; section: 'recent' | 'closed' | 'search' }
-  | { kind: 'nonbillable' }
-  | { kind: 'ignore' };
+  | { kind: 'matter'; matter: Matter; section: 'recent' | 'closed' | 'search' };
 
 export function MatterPicker({
   candidates,
@@ -31,8 +27,6 @@ export function MatterPicker({
   recentMatterIds,
   currentMatterId,
   onAssign,
-  onNonBillable,
-  onIgnore,
   onClose,
   onCreateRule,
 }: MatterPickerProps) {
@@ -87,7 +81,7 @@ export function MatterPicker({
     return recentMatterIds
       .map((id) => matters.find((m) => m.id === id))
       .filter((m): m is Matter => m !== undefined)
-      .slice(0, 3);
+      .slice(0, 5);
   }, [query, recentMatterIds, matters]);
 
   const closedMatters = useMemo(() => {
@@ -104,8 +98,6 @@ export function MatterPicker({
     } else {
       searchResults.forEach((m) => result.push({ kind: 'matter', matter: m, section: 'search' }));
     }
-    result.push({ kind: 'nonbillable' });
-    result.push({ kind: 'ignore' });
     return result;
   }, [candidates, query, searchResults, recentMatters, closedMatters]);
 
@@ -126,13 +118,11 @@ export function MatterPicker({
         if (!row) return;
         if (row.kind === 'candidate') selectMatter(row.candidate.matterId);
         else if (row.kind === 'matter') selectMatter(row.matter.id);
-        else if (row.kind === 'nonbillable') onNonBillable();
-        else if (row.kind === 'ignore') onIgnore();
       }
     }
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [rows, activeIndex, onAssign, onNonBillable, onIgnore, onClose]);
+  }, [rows, activeIndex, onAssign, onClose]);
 
   useEffect(() => {
     const el = scrollRef.current?.children[activeIndex] as HTMLElement | undefined;
@@ -144,7 +134,6 @@ export function MatterPicker({
   const firstRecentIndex = rows.findIndex((r) => r.kind === 'matter' && r.section === 'recent');
   const firstClosedIndex = rows.findIndex((r) => r.kind === 'matter' && r.section === 'closed');
   const firstSearchIndex = rows.findIndex((r) => r.kind === 'matter' && r.section === 'search');
-  const firstSpecialIndex = rows.findIndex((r) => r.kind === 'nonbillable' || r.kind === 'ignore');
 
   return (
     <div ref={rootRef} className="w-full max-w-[340px] overflow-hidden rounded-2xl border border-stone-200/80 bg-white shadow-xl shadow-stone-200/60 sm:w-[340px]">
@@ -184,7 +173,6 @@ export function MatterPicker({
           const showRecentLabel = i === firstRecentIndex && firstRecentIndex >= 0;
           const showClosedLabel = i === firstClosedIndex && firstClosedIndex >= 0;
           const showSearchLabel = i === firstSearchIndex && firstSearchIndex >= 0 && query.trim().length > 0;
-          const showDivider = i === firstSpecialIndex && firstSpecialIndex > 0;
 
           return (
             <div key={i}>
@@ -211,7 +199,6 @@ export function MatterPicker({
                   Results
                 </p>
               )}
-              {showDivider && <div className="mx-3 my-1 border-t border-stone-100" />}
 
               {row.kind === 'candidate' && (
                 <CandidateRow
@@ -232,30 +219,6 @@ export function MatterPicker({
                   onHover={() => setActiveIndex(i)}
                   onClick={() => selectMatter(row.matter.id)}
                 />
-              )}
-              {row.kind === 'nonbillable' && (
-                <button
-                  onClick={onNonBillable}
-                  onMouseEnter={() => setActiveIndex(i)}
-                  className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
-                    isActive ? 'bg-stone-100 text-stone-800' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
-                  }`}
-                >
-                  <Briefcase size={14} className="shrink-0" />
-                  <span>Mark as non-billable</span>
-                </button>
-              )}
-              {row.kind === 'ignore' && (
-                <button
-                  onClick={onIgnore}
-                  onMouseEnter={() => setActiveIndex(i)}
-                  className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
-                    isActive ? 'bg-stone-100 text-stone-800' : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700'
-                  }`}
-                >
-                  <EyeOff size={14} className="shrink-0" />
-                  <span>Ignore this item</span>
-                </button>
               )}
             </div>
           );

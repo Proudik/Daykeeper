@@ -47,6 +47,7 @@ import {
   Briefcase,
   FlaskConical,
   Minimize2,
+  Trash2,
 } from 'lucide-react';
 import { generateMockItems, generateMockMatters } from '@/lib/mockData';
 
@@ -134,6 +135,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const [lastDropMatterId, setLastDropMatterId] = useState<string | null>(null);
   const [pendingDropItemId, setPendingDropItemId] = useState<string | null>(null);
   const [hoveredEntryItemIds, setHoveredEntryItemIds] = useState<Set<string>>(new Set());
+  const [discardedItemIds, setDiscardedItemIds] = useState<Set<string>>(new Set());
   const [useMockData, setUseMockData] = useState(false);
   const [generationRevision, setGenerationRevision] = useState(0);
   const [mobileTab, setMobileTab] = useState<'signals' | 'timesheet'>('signals');
@@ -160,7 +162,10 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const language = profile?.output_language ?? 'en';
 
   // When mock data is enabled, replace items with generated mock data for the selected date.
-  const displayItems = useMockData ? generateMockItems(selectedDate) : items;
+  const displayItems = useMemo(() => {
+    const base = useMockData ? generateMockItems(selectedDate) : items;
+    return base.filter((i) => !discardedItemIds.has(i.id));
+  }, [useMockData, selectedDate, items, discardedItemIds]);
   const displayMatters = useMockData ? generateMockMatters() : matters;
   const displaySelectedIds = useMockData
     ? new Set(displayItems.map((i) => i.id))
@@ -1264,15 +1269,6 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                 recentMatterIds={recentMatterIds}
                 currentMatterId={null}
                 onAssign={assignPendingDrop}
-                onNonBillable={() => {
-                  setManualOverrides((prev) => {
-                    const next = new Map(prev);
-                    next.set(pendingDropItemId, null);
-                    return next;
-                  });
-                  setPendingDropItemId(null);
-                }}
-                onIgnore={closePendingDropPicker}
                 onClose={closePendingDropPicker}
               />
             </div>
@@ -1302,6 +1298,27 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
           Timesheet
         </button>
       </div>
+
+      {/* Discard bucket — drop signals here to remove them from the timeline */}
+      <DiscardBucket
+        discardedCount={discardedItemIds.size}
+        onDiscard={(itemIds) => {
+          setDiscardedItemIds((prev) => {
+            const next = new Set(prev);
+            for (const id of itemIds) next.add(id);
+            return next;
+          });
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            for (const id of itemIds) next.delete(id);
+            return next;
+          });
+          setGenerationRevision((r) => r + 1);
+        }}
+        onRestore={() => {
+          setDiscardedItemIds(new Set());
+        }}
+      />
 
       {/* Recent cases drop zone */}
       <RecentCasesBar
@@ -1447,6 +1464,77 @@ function RecentCasesBar({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// --- Discard bucket --------------------------------------------------------
+
+function DiscardBucket({
+  discardedCount,
+  onDiscard,
+  onRestore,
+}: {
+  discardedCount: number;
+  onDiscard: (itemIds: string[]) => void;
+  onRestore: () => void;
+}) {
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const payload = e.dataTransfer.getData('text/daykeeper-items');
+    let ids: string[];
+    try {
+      ids = JSON.parse(payload);
+    } catch {
+      const single = e.dataTransfer.getData('text/daykeeper-item');
+      ids = single ? [single] : [];
+    }
+    if (ids.length > 0 && ids[0]) {
+      onDiscard(ids);
+    }
+    setIsDragOver(false);
+  }
+
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={handleDrop}
+      className={`fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-xl border-2 px-4 py-3 shadow-lg transition-all duration-150 ${
+        isDragOver
+          ? 'border-red-300 bg-red-50 scale-105'
+          : 'border-stone-200 bg-white/90 backdrop-blur-sm hover:border-stone-300'
+      }`}
+    >
+      <Trash2
+        size={18}
+        className={`shrink-0 transition-colors ${isDragOver ? 'text-red-500' : 'text-stone-400'}`}
+      />
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-stone-600">
+          Discard
+        </p>
+        <p className="text-[10px] text-stone-400">
+          {discardedCount > 0
+            ? `${discardedCount} discarded`
+            : 'Drag irrelevant signals here'}
+        </p>
+      </div>
+      {discardedCount > 0 && (
+        <button
+          onClick={onRestore}
+          className="ml-1 rounded-md px-2 py-1 text-[10px] font-medium text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700"
+        >
+          Restore
+        </button>
+      )}
     </div>
   );
 }
