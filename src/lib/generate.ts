@@ -206,26 +206,42 @@ export async function generateDraftEntries(
     const missed = group.filter((session) => !coveredSessionIds.has(session.sessionId));
     if (missed.length === 0) continue;
 
-    const entries = missed
+    const missedEntries = missed
       .map((s) => entryBySessionId.get(s.sessionId))
       .filter((e): e is EstimatedEntry => e !== undefined);
-    const allSourceItemIds = entries.flatMap((e) => e.sourceItemIds);
+    const allSourceItemIds = missed.flatMap((session) =>
+      entryBySessionId.get(session.sessionId)?.sourceItemIds ?? session.sourceItemIds,
+    );
     const items = allSourceItemIds
       .map((id) => selectedItems.find((i) => i.id === id))
       .filter((i): i is ActivityItem => i !== undefined);
-    const totalMinutes = entries.reduce((s, e) => s + e.roundedMinutes, 0);
-    const description = items.map((i) => i.meta.subject ?? i.meta.title ?? i.meta.fileName ?? i.summary).filter(Boolean).join("; ") || entries[0]?.label || "Manual entry required";
-    const confidence = entries.every((e) => e.confidence === 'high') ? 'high' : entries.some((e) => e.confidence === 'low') ? 'low' : 'medium';
+    const totalMinutes = missed.reduce(
+      (sum, session) => sum + (entryBySessionId.get(session.sessionId)?.roundedMinutes ?? 0),
+      0,
+    );
+    const description = items.map((i) => i.meta.subject ?? i.meta.title ?? i.meta.fileName ?? i.summary).filter(Boolean).join("; ") || missedEntries.map((e) => e.label).filter(Boolean).join("; ");
+    const confidence = missed.every((s) => s.confidence === 'high') ? 'high' : missed.some((s) => s.confidence === 'low') ? 'low' : 'medium';
+    const existingEntry = allEntries.find((entry) => entry.matterId === matterId);
+
+    if (existingEntry) {
+      existingEntry.sourceItemIds = [...new Set([...existingEntry.sourceItemIds, ...allSourceItemIds])];
+      existingEntry.suggestedMinutes += totalMinutes;
+      existingEntry.confirmedMinutes += totalMinutes;
+      const missedSummary = missedEntries.map((e) => `${e.provider} ${e.roundedMinutes}min`).join(", ");
+      existingEntry.sourceSummary = [existingEntry.sourceSummary, missedSummary].filter(Boolean).join(", ");
+      if (existingEntry.confidence !== 'low' && confidence === 'low') existingEntry.confidence = 'low';
+      continue;
+    }
 
     allEntries.push({
-      id: `fallback-${matterId}-${entries[0]?.id ?? 'session'}`,
-      description,
+      id: `fallback-${matterId}-${missedEntries[0]?.id ?? missed[0].sessionId}`,
+      description: description || 'Unclassified activity',
       suggestedMinutes: totalMinutes,
       confirmedMinutes: totalMinutes,
       activityType: null,
       billable: true,
       confidence,
-      sourceSummary: entries.map((e) => `${e.provider} ${e.roundedMinutes}min`).join(", "),
+      sourceSummary: missedEntries.map((e) => `${e.provider} ${e.roundedMinutes}min`).join(", "),
       sourceItemIds: allSourceItemIds,
       matterId,
       matterConfidence: group[0].confidence as DraftTimesheetEntry['matterConfidence'],
@@ -341,7 +357,7 @@ function createFallbackEntries(
       .map((id) => sourceItems.find((i) => i.id === id))
       .filter((i): i is ActivityItem => i !== undefined);
     const totalMinutes = entries.reduce((s, e) => s + e.roundedMinutes, 0);
-    const description = items.map((i) => i.meta.subject ?? i.meta.title ?? i.meta.fileName ?? i.summary).filter(Boolean).join("; ") || entries[0]?.label || "Manual entry required";
+    const description = items.map((i) => i.meta.subject ?? i.meta.title ?? i.meta.fileName ?? i.summary).filter(Boolean).join("; ") || entries[0]?.label || "Unclassified activity";
     const confidence = entries.every((e) => e.confidence === 'high') ? 'high' : entries.some((e) => e.confidence === 'low') ? 'low' : 'medium';
 
     return {
