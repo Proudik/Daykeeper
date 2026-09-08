@@ -852,9 +852,9 @@ export function CalendarBoard({
               return (
                 <div key={colDef.key} className="relative z-0 flex-1 border-l border-stone-200">
                   {/* Column header */}
-                  <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-stone-200 bg-stone-50/90 px-2 py-1.5 backdrop-blur-sm">
+                  <div className="sticky top-0 z-10 flex h-10 min-h-10 items-center gap-1.5 border-b border-stone-200 bg-stone-50/90 px-2 backdrop-blur-sm">
                     <Icon size={12} style={{ color: colDef.color }} />
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-stone-600">
+                    <span className="min-w-0 truncate whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-stone-600">
                       {colDef.label}
                     </span>
                     <span className="ml-auto text-[9px] text-stone-400">{colBlocks.length}</span>
