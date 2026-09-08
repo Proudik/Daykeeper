@@ -729,12 +729,13 @@ export function CalendarBoard({
         onDragEnd={handleDragEnd}
         onMouseEnter={() => setHoveredBlock(block.key)}
         onMouseLeave={() => setHoveredBlock(null)}
-        className={`group absolute z-[5] cursor-grab rounded-lg border text-left shadow-[0_1px_2px_rgba(28,25,23,0.08)] ${
+        className={`group absolute cursor-grab rounded-lg border text-left shadow-[0_1px_2px_rgba(28,25,23,0.08)] ${
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
-        } ${isStackAggregate ? 'cursor-pointer' : ''} ${isHovered ? 'z-30 overflow-visible shadow-md' : 'overflow-hidden'}`}
+        } ${isStackAggregate ? 'cursor-pointer' : ''} ${isHovered ? 'overflow-visible shadow-md' : 'overflow-hidden'}`}
         style={{
+          zIndex: isHovered ? 10000 : 5,
           top: topPx,
           height: isHovered ? 'auto' : heightPx,
           minHeight: heightPx,
@@ -851,7 +852,8 @@ export function CalendarBoard({
               return (
                 <div
                   key={colDef.key}
-                  className={`relative flex-1 border-l border-stone-200 ${colBlocks.some((block) => block.key === hoveredBlock) ? 'z-40' : 'z-0'}`}
+                  className="relative flex-1 border-l border-stone-200"
+                  style={{ zIndex: colBlocks.some((block) => block.key === hoveredBlock) ? 9999 : 0 }}
                 >
                   {/* Column header */}
                   <div
