@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { createSingleCaseProvider, checkPossibleDuplicate, type SingleCaseProviderData } from '@/providers/singlecase';
@@ -1260,14 +1259,8 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
             lastDropMatterId={lastDropMatterId}
             onHoverEntry={(itemIds) => setHoveredEntryItemIds(itemIds ? new Set(itemIds) : new Set())}
           />
-          {pendingDropSession && pendingDropItemId && createPortal(
-            <div
-              className="fixed inset-0 z-[999] flex items-center justify-center bg-stone-950/70 p-4 backdrop-blur-[3px] animate-fade-in"
-              role="presentation"
-              onMouseDown={(e) => {
-                if (e.target === e.currentTarget) closePendingDropPicker();
-              }}
-            >
+          {pendingDropSession && pendingDropItemId && (
+            <div className="absolute inset-0 z-30 flex items-end justify-center bg-stone-900/40 backdrop-blur-sm sm:right-5 sm:top-5 sm:inset-auto sm:items-start sm:justify-start sm:bg-stone-900/20">
               <MatterPicker
                 anchorId={pendingDropItemId}
                 candidates={pendingDropSession.candidates}
@@ -1278,8 +1271,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
                 onAssign={assignPendingDrop}
                 onClose={closePendingDropPicker}
               />
-            </div>,
-            document.body,
+            </div>
           )}
         </div>
       </div>
