@@ -701,6 +701,7 @@ export function CalendarBoard({
     const isHovered = hoveredBlock === block.key;
     const width = Math.max(24, 100 / block.laneCount - 3);
     const isStackGroup = Boolean(block.stackGroupKey);
+    const isStackAggregate = isStackGroup && block.isAggregate;
     const left = (block.lane * 100) / block.laneCount + 1.5;
 
     const matterId = block.itemIds
@@ -714,7 +715,7 @@ export function CalendarBoard({
     return (
       <div
         key={block.key}
-        draggable={!isStackGroup}
+        draggable={!isStackAggregate}
         onClick={() => {
           if (!block.stackGroupKey) return;
           setExpandedStackKeys((prev) => {
@@ -732,7 +733,7 @@ export function CalendarBoard({
           isPreviewDimmed ? 'opacity-20' : ''
         } ${isPreviewHighlighted ? 'ring-2 ring-accent-400 ring-offset-1' : ''} ${
           draggingId === block.key ? 'opacity-40' : ''
-        } ${isStackGroup ? 'cursor-pointer' : ''} ${isHovered ? 'z-30 overflow-visible shadow-md' : 'overflow-hidden'}`}
+        } ${isStackAggregate ? 'cursor-pointer' : ''} ${isHovered ? 'z-30 overflow-visible shadow-md' : 'overflow-hidden'}`}
         style={{
           top: topPx,
           height: isHovered ? 'auto' : heightPx,
