@@ -627,7 +627,7 @@ export function CalendarBoard({
     return COLUMNS.flatMap((column) =>
       rawColumns[column.key].map((block) => ({
         startMin: block.startMin,
-        endMin: block.startMin + Math.min(Math.max(block.endMin - block.startMin, 1), 60),
+        endMin: block.startMin + 1,
       })),
     );
   }, [rawColumns]);
@@ -813,8 +813,8 @@ export function CalendarBoard({
           <div className="relative flex flex-1">
             {/* Gap band overlay — spans full width of all columns */}
             <div
-              className="absolute left-0 right-0 top-0 z-20"
-              style={{ height: effectiveTotalPx, transition: `height ${TRANSITION_MS}ms ease-out` }}
+              className="absolute left-0 right-0 top-0 z-0"
+              style={{ height: effectiveTotalPx, transition: `height ${TRANSITION_MS}ms ease-out`, pointerEvents: 'none' }}
             >
               {gapSegments.map((gap) => {
                 const isCollapsed = gap.type === 'gap';
@@ -832,11 +832,10 @@ export function CalendarBoard({
                       top,
                       height: isCollapsed ? COLLAPSED_BAND_PX : 0,
                       opacity: isCollapsed ? 1 : 0,
-                      pointerEvents: isCollapsed ? 'auto' : 'none',
+                      pointerEvents: 'none',
                       transition: `top ${TRANSITION_MS}ms ease-out, height ${TRANSITION_MS}ms ease-out, opacity ${TRANSITION_MS}ms ease-out`,
                     }}
-                    onClick={() => gap.gapId && toggleGap(gap.gapId)}
-                    title={isCollapsed ? 'Click to expand' : 'Click to collapse'}
+                    title={isCollapsed ? `${formatMinutes(duration)} — no activity` : ''}
                   >
                     <div className="flex h-full items-center justify-center gap-1.5">
                       <ChevronDown size={12} className="shrink-0 text-stone-400" />
