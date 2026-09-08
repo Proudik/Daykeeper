@@ -220,8 +220,8 @@ function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]
 
 // ── Non-linear scale for collapsing empty time ──────────────────────────────
 
-const COLLAPSE_THRESHOLD_MIN = 15;
-const COLLAPSED_BAND_PX = 28;
+const COLLAPSE_THRESHOLD_MIN = 30;
+const COLLAPSED_BAND_PX = 20;
 const OVERLAP_TOLERANCE_MIN = 5;
 const MAX_LANES = 2;
 const TRANSITION_MS = 280;
