@@ -138,7 +138,7 @@ export function DayView({ selectedDate, onDateChange }: DayViewProps) {
   const [generationRevision, setGenerationRevision] = useState(0);
   const [mobileTab, setMobileTab] = useState<'signals' | 'timesheet'>('signals');
   const [isMobile, setIsMobile] = useState(false);
-  const [collapseEmpty, setCollapseEmpty] = useState(false);
+  const [collapseEmpty, setCollapseEmpty] = useState(true);
 
   // Force review mode on mobile for a cleaner phone experience
   useEffect(() => {

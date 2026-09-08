@@ -618,16 +618,22 @@ export function CalendarBoard({
     return { displayStart: start, displayEnd: end };
   }, [rawColumns, baseDisplayStart, baseDisplayEnd]);
 
-  const scaleBlocks = useMemo(() => {
-    return COLUMNS.flatMap((column) =>
-      rawColumns[column.key].map((block) => ({ startMin: block.startMin, endMin: block.endMin }))
-    );
-  }, [rawColumns]);
+  // For gap detection, use the actual activity timestamps — not the inflated
+  // block spans (which include min-duration padding and 2-hour browser blocks).
+  const activityIntervals = useMemo(() => {
+    return items.map((item) => {
+      const sMin = timestampToMinutes(item.timestamp, timezone);
+      const eMin = item.endTimestamp
+        ? timestampToMinutes(item.endTimestamp, timezone)
+        : sMin + (item.durationMinutes ?? 15);
+      return { startMin: sMin, endMin: eMin };
+    });
+  }, [items, timezone]);
 
   // Build non-linear scale after accounting for the vertical space needed by stacks.
   const { segments, gapSegments, minuteToPx, totalPx } = useMemo(
-    () => buildScale(scaleBlocks, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx),
-    [scaleBlocks, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx],
+    () => buildScale(activityIntervals, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx),
+    [activityIntervals, displayStart, displayEnd, collapseEmpty, expandedGapIds, hourPx],
   );
 
   // Pack each column with stacking
@@ -805,8 +811,8 @@ export function CalendarBoard({
           <div className="relative flex flex-1">
             {/* Gap band overlay — spans full width of all columns */}
             <div
-              className="absolute left-0 right-0 top-0 z-10"
-              style={{ height: effectiveTotalPx, transition: `height ${TRANSITION_MS}ms ease-out`, pointerEvents: 'none' }}
+              className="absolute left-0 right-0 top-0 z-20"
+              style={{ height: effectiveTotalPx, transition: `height ${TRANSITION_MS}ms ease-out` }}
             >
               {gapSegments.map((gap) => {
                 const isCollapsed = gap.type === 'gap';
@@ -815,9 +821,9 @@ export function CalendarBoard({
                 return (
                   <div
                     key={gap.gapId}
-                    className={`absolute left-0 right-0 cursor-pointer border-t border-b border-dashed transition-colors ${
+                    className={`absolute left-0 right-0 overflow-hidden transition-colors ${
                       isCollapsed
-                        ? 'border-stone-300 bg-stone-100/95 hover:bg-stone-200/95 hover:border-stone-400'
+                        ? 'cursor-pointer border-t border-b border-dashed border-stone-300 bg-stone-100/95 hover:bg-stone-200/95 hover:border-stone-400'
                         : 'border-transparent'
                     }`}
                     style={{
@@ -825,7 +831,6 @@ export function CalendarBoard({
                       height: isCollapsed ? COLLAPSED_BAND_PX : 0,
                       opacity: isCollapsed ? 1 : 0,
                       pointerEvents: isCollapsed ? 'auto' : 'none',
-                      overflow: 'hidden',
                       transition: `top ${TRANSITION_MS}ms ease-out, height ${TRANSITION_MS}ms ease-out, opacity ${TRANSITION_MS}ms ease-out`,
                     }}
                     onClick={() => gap.gapId && toggleGap(gap.gapId)}
