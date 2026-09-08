@@ -622,18 +622,15 @@ export function CalendarBoard({
     return { displayStart: start, displayEnd: end };
   }, [rawColumns, baseDisplayStart, baseDisplayEnd]);
 
-  // For gap detection, use the actual activity timestamps — not the inflated
-  // block spans (which include min-duration padding and 2-hour browser blocks).
+  // Gap detection follows the visible blocks, not hidden signals inside aggregates.
   const activityIntervals = useMemo(() => {
-    return items.map((item) => {
-      const sMin = timestampToMinutes(item.timestamp, timezone);
-      const rawDuration = item.endTimestamp
-        ? timestampToMinutes(item.endTimestamp, timezone) - sMin
-        : (item.durationMinutes ?? 15);
-      const duration = Math.min(Math.max(rawDuration, 1), 60);
-      return { startMin: sMin, endMin: sMin + duration };
-    });
-  }, [items, timezone]);
+    return COLUMNS.flatMap((column) =>
+      rawColumns[column.key].map((block) => ({
+        startMin: block.startMin,
+        endMin: block.startMin + Math.min(Math.max(block.endMin - block.startMin, 1), 60),
+      })),
+    );
+  }, [rawColumns]);
 
   // Build non-linear scale after accounting for the vertical space needed by stacks.
   const { segments, gapSegments, minuteToPx, totalPx } = useMemo(
