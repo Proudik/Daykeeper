@@ -262,7 +262,7 @@ function buildScale(
     }
     cursor = Math.max(cursor, iv.end);
   }
-  if (displayEnd - cursor >= COLLAPSE_THRESHOLD_MIN) {
+  if (merged.length > 0 && displayEnd - cursor >= COLLAPSE_THRESHOLD_MIN) {
     gaps.push({ start: cursor, end: displayEnd, id: `gap-${cursor}-${displayEnd}` });
   }
 
@@ -520,6 +520,10 @@ export function CalendarBoard({
   const [expandedStackKeys, setExpandedStackKeys] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setExpandedGapIds(new Set());
+  }, [items]);
 
   useEffect(() => {
     if (!collapseEmpty) setExpandedGapIds(new Set());
