@@ -460,6 +460,7 @@ function packColumn(
           topPx,
           heightPx,
           isStacked: true,
+          stackGroupKey,
         });
         floorPx = topPx + heightPx + 2;
       }
