@@ -38,12 +38,12 @@ interface ColumnDef {
 }
 
 const COLUMNS: ColumnDef[] = [
-  { key: 'calendar', label: 'Calendar', icon: Calendar, color: '#dc2626' },
-  { key: 'email_sent', label: 'Sent Emails', icon: Mail, color: '#2563eb' },
-  { key: 'sc_doc', label: 'SC Documents', icon: FileText, color: '#0891b2' },
-  { key: 'sc_other', label: 'SC Other', icon: Inbox, color: '#0e7490' },
-  { key: 'browser', label: 'Browser', icon: Globe, color: '#0d9488' },
-  { key: 'other', label: 'Other', icon: Layers, color: '#78716c' },
+  { key: 'calendar', label: 'Calendar', icon: Calendar, color: '#e5b3ad' },
+  { key: 'email_sent', label: 'Sent Emails', icon: Mail, color: '#b7c8e7' },
+  { key: 'sc_doc', label: 'SC Documents', icon: FileText, color: '#b5d7df' },
+  { key: 'sc_other', label: 'SC Other', icon: Inbox, color: '#a7cbd3' },
+  { key: 'browser', label: 'Browser', icon: Globe, color: '#b2d8cf' },
+  { key: 'other', label: 'Other', icon: Layers, color: '#c8c3be' },
 ];
 
 function itemColumn(item: ActivityItem): ColumnKey {
@@ -762,7 +762,7 @@ export function CalendarBoard({
             </span>
           )}
           {matter && matterColor && (
-            <div className="mt-0.5 flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-white shadow-sm" style={{ backgroundColor: matterColor }}>
+            <div className="mt-0.5 flex items-center gap-0.5 rounded px-1 py-0.5 text-[8px] font-semibold text-stone-800 shadow-sm" style={{ backgroundColor: `${matterColor}55` }}>
               <Briefcase size={7} className="shrink-0" />
               <span className={isHovered ? 'break-words' : 'truncate'}>{matter.name}</span>
             </div>
@@ -860,11 +860,11 @@ export function CalendarBoard({
                     className="sticky top-0 z-30 flex h-10 min-h-10 items-center gap-1.5 border-b px-2"
                     style={{ backgroundColor: colDef.color }}
                   >
-                    <Icon size={12} className="text-white/90" />
-                    <span className="min-w-0 truncate whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-white">
+                    <Icon size={12} className="text-stone-700/80" />
+                    <span className="min-w-0 truncate whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-stone-800">
                       {colDef.label}
                     </span>
-                    <span className="ml-auto rounded-full bg-white/20 px-1.5 text-[9px] font-medium text-white">{colBlocks.length}</span>
+                    <span className="ml-auto rounded-full bg-stone-900/10 px-1.5 text-[9px] font-medium text-stone-700">{colBlocks.length}</span>
                   </div>
 
                   {/* Grid */}
@@ -899,7 +899,7 @@ export function CalendarBoard({
 }
 
 const MATTER_PALETTE = [
-  '#2563eb', '#dc2626', '#059669', '#ea580c',
-  '#7c3aed', '#0891b2', '#db2777', '#ca8a04',
-  '#4f46e5', '#16a34a', '#e11d48', '#0d9488',
+  '#5b7ab0', '#a86a62', '#5e8a76', '#a87b5e',
+  '#7e7868', '#5e8e9a', '#9a7078', '#9a8152',
+  '#6d7f98', '#628769', '#96656a', '#5e8a82',
 ];
