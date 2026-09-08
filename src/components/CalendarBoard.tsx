@@ -751,11 +751,9 @@ export function CalendarBoard({
               {block.label}
             </p>
           )}
-          {heightPx >= 34 && (!hasMatter || heightPx >= 50) && (
-            <p className={`text-[9px] leading-tight text-stone-500 ${isHovered ? 'break-words' : 'truncate'}`}>
-              {block.subLabel}
-            </p>
-          )}
+          <p className={`text-[9px] leading-tight text-stone-500 ${isHovered ? 'break-words' : 'truncate'}`}>
+            {block.subLabel}
+          </p>
           {block.isAggregate && heightPx >= 56 && (!hasMatter || heightPx >= 64) && (
             <span className="mt-0.5 inline-flex items-center gap-0.5 rounded bg-stone-200/70 px-1 text-[8px] font-semibold text-stone-600">
               {block.stackCount ?? block.itemIds.length} {block.stackCount ? 'activities' : 'signals'}
@@ -853,12 +851,15 @@ export function CalendarBoard({
               return (
                 <div key={colDef.key} className="relative z-0 flex-1 border-l border-stone-200">
                   {/* Column header */}
-                  <div className="sticky top-0 z-10 flex h-10 min-h-10 items-center gap-1.5 border-b border-stone-200 bg-stone-50/90 px-2 backdrop-blur-sm">
-                    <Icon size={12} style={{ color: colDef.color }} />
-                    <span className="min-w-0 truncate whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-stone-600">
+                  <div
+                    className="sticky top-0 z-10 flex h-10 min-h-10 items-center gap-1.5 border-b px-2"
+                    style={{ backgroundColor: colDef.color }}
+                  >
+                    <Icon size={12} className="text-white/90" />
+                    <span className="min-w-0 truncate whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-white">
                       {colDef.label}
                     </span>
-                    <span className="ml-auto text-[9px] text-stone-400">{colBlocks.length}</span>
+                    <span className="ml-auto rounded-full bg-white/20 px-1.5 text-[9px] font-medium text-white">{colBlocks.length}</span>
                   </div>
 
                   {/* Grid */}

@@ -214,7 +214,7 @@ export async function generateDraftEntries(
       .map((id) => selectedItems.find((i) => i.id === id))
       .filter((i): i is ActivityItem => i !== undefined);
     const totalMinutes = entries.reduce((s, e) => s + e.roundedMinutes, 0);
-    const description = items.map((i) => i.summary).join("; ") || entries[0]?.label || "Manual entry required";
+    const description = items.map((i) => i.meta.subject ?? i.meta.title ?? i.meta.fileName ?? i.summary).filter(Boolean).join("; ") || entries[0]?.label || "Manual entry required";
     const confidence = entries.every((e) => e.confidence === 'high') ? 'high' : entries.some((e) => e.confidence === 'low') ? 'low' : 'medium';
 
     allEntries.push({
@@ -341,7 +341,7 @@ function createFallbackEntries(
       .map((id) => sourceItems.find((i) => i.id === id))
       .filter((i): i is ActivityItem => i !== undefined);
     const totalMinutes = entries.reduce((s, e) => s + e.roundedMinutes, 0);
-    const description = items.map((i) => i.summary).join("; ") || entries[0]?.label || "Manual entry required";
+    const description = items.map((i) => i.meta.subject ?? i.meta.title ?? i.meta.fileName ?? i.summary).filter(Boolean).join("; ") || entries[0]?.label || "Manual entry required";
     const confidence = entries.every((e) => e.confidence === 'high') ? 'high' : entries.some((e) => e.confidence === 'low') ? 'low' : 'medium';
 
     return {
