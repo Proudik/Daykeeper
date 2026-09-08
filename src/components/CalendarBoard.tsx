@@ -242,22 +242,23 @@ function buildScale(
   expandedGapIds: Set<string>,
   hourPx: number,
 ): { segments: ScaleSegment[]; gapSegments: ScaleSegment[]; totalPx: number; minuteToPx: (min: number) => number } {
-  // Collect activity start points and sort them
-  const points = [...allBlocks]
-    .map((b) => b.startMin)
-    .sort((a, b) => a - b);
-
-  // Find gaps ≥ threshold between consecutive activity points
+  // Keep every hour containing an activity at the normal scale. Only fully
+  // empty clock hours are eligible for collapsing.
+  const occupiedHours = new Set(
+    allBlocks.map((block) => Math.floor(block.startMin / 60) * 60),
+  );
   const gaps: { start: number; end: number; id: string }[] = [];
-  let cursor = displayStart;
-  for (const pt of points) {
-    if (pt - cursor >= COLLAPSE_THRESHOLD_MIN) {
-      gaps.push({ start: cursor, end: pt, id: `gap-${cursor}-${pt}` });
+  let emptyStart: number | null = null;
+  for (let hour = displayStart; hour < displayEnd; hour += 60) {
+    const isEmpty = !occupiedHours.has(hour);
+    if (isEmpty && emptyStart === null) emptyStart = hour;
+    if ((!isEmpty || hour + 60 >= displayEnd) && emptyStart !== null) {
+      const end = isEmpty && hour + 60 >= displayEnd ? hour + 60 : hour;
+      if (end - emptyStart >= COLLAPSE_THRESHOLD_MIN) {
+        gaps.push({ start: emptyStart, end, id: `gap-${emptyStart}-${end}` });
+      }
+      emptyStart = null;
     }
-    cursor = Math.max(cursor, pt);
-  }
-  if (points.length > 0 && displayEnd - cursor >= COLLAPSE_THRESHOLD_MIN) {
-    gaps.push({ start: cursor, end: displayEnd, id: `gap-${cursor}-${displayEnd}` });
   }
 
   // Build alternating active/gap segments
