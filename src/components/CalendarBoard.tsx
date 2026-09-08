@@ -220,7 +220,7 @@ function assignLanes(blocks: { startMin: number; endMin: number; key: string }[]
 
 // ── Non-linear scale for collapsing empty time ──────────────────────────────
 
-const COLLAPSE_THRESHOLD_MIN = 30;
+const COLLAPSE_THRESHOLD_MIN = 15;
 const COLLAPSED_BAND_PX = 20;
 const OVERLAP_TOLERANCE_MIN = 5;
 const MAX_LANES = 2;
@@ -242,27 +242,21 @@ function buildScale(
   expandedGapIds: Set<string>,
   hourPx: number,
 ): { segments: ScaleSegment[]; gapSegments: ScaleSegment[]; totalPx: number; minuteToPx: (min: number) => number } {
-  // Merge overlapping busy intervals
-  const sorted = [...allBlocks].sort((a, b) => a.startMin - b.startMin);
-  const merged: { start: number; end: number }[] = [];
-  for (const iv of sorted) {
-    if (merged.length > 0 && iv.start <= merged[merged.length - 1].end) {
-      merged[merged.length - 1].end = Math.max(merged[merged.length - 1].end, iv.end);
-    } else {
-      merged.push({ start: iv.start, end: iv.end });
-    }
-  }
+  // Collect activity start points and sort them
+  const points = [...allBlocks]
+    .map((b) => b.startMin)
+    .sort((a, b) => a - b);
 
-  // Find gaps ≥ threshold
+  // Find gaps ≥ threshold between consecutive activity points
   const gaps: { start: number; end: number; id: string }[] = [];
   let cursor = displayStart;
-  for (const iv of merged) {
-    if (iv.start - cursor >= COLLAPSE_THRESHOLD_MIN) {
-      gaps.push({ start: cursor, end: iv.start, id: `gap-${cursor}-${iv.start}` });
+  for (const pt of points) {
+    if (pt - cursor >= COLLAPSE_THRESHOLD_MIN) {
+      gaps.push({ start: cursor, end: pt, id: `gap-${cursor}-${pt}` });
     }
-    cursor = Math.max(cursor, iv.end);
+    cursor = Math.max(cursor, pt);
   }
-  if (merged.length > 0 && displayEnd - cursor >= COLLAPSE_THRESHOLD_MIN) {
+  if (points.length > 0 && displayEnd - cursor >= COLLAPSE_THRESHOLD_MIN) {
     gaps.push({ start: cursor, end: displayEnd, id: `gap-${cursor}-${displayEnd}` });
   }
 
@@ -627,7 +621,7 @@ export function CalendarBoard({
     return COLUMNS.flatMap((column) =>
       rawColumns[column.key].map((block) => ({
         startMin: block.startMin,
-        endMin: block.startMin + 1,
+        endMin: block.startMin,
       })),
     );
   }, [rawColumns]);
