@@ -627,10 +627,11 @@ export function CalendarBoard({
   const activityIntervals = useMemo(() => {
     return items.map((item) => {
       const sMin = timestampToMinutes(item.timestamp, timezone);
-      const eMin = item.endTimestamp
-        ? timestampToMinutes(item.endTimestamp, timezone)
-        : sMin + (item.durationMinutes ?? 15);
-      return { startMin: sMin, endMin: eMin };
+      const rawDuration = item.endTimestamp
+        ? timestampToMinutes(item.endTimestamp, timezone) - sMin
+        : (item.durationMinutes ?? 15);
+      const duration = Math.min(Math.max(rawDuration, 1), 60);
+      return { startMin: sMin, endMin: sMin + duration };
     });
   }, [items, timezone]);
 
