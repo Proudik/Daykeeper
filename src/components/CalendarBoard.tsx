@@ -849,7 +849,10 @@ export function CalendarBoard({
               const colBlocks = packedColumns[colDef.key];
               const Icon = colDef.icon;
               return (
-                <div key={colDef.key} className="relative z-0 flex-1 border-l border-stone-200">
+                <div
+                  key={colDef.key}
+                  className={`relative flex-1 border-l border-stone-200 ${colBlocks.some((block) => block.key === hoveredBlock) ? 'z-40' : 'z-0'}`}
+                >
                   {/* Column header */}
                   <div
                     className="sticky top-0 z-30 flex h-10 min-h-10 items-center gap-1.5 border-b px-2"
